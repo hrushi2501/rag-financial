@@ -1,0 +1,15 @@
+<!-- UploadModal.html -->
+<div id="uploadModal" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70 z-50 hidden">
+  <div class="bg-gray-900 rounded-2xl p-8 shadow-xl flex flex-col w-96">
+    <div class="flex justify-between items-center mb-6">
+      <h3 class="text-lg font-bold text-white">Upload Document</h3>
+      <button id="uploadCloseBtn" class="btn-primary w-8 h-8 rounded bg-gray-700 text-white hover:bg-gray-600 transition" title="Close">&times;</button>
+    </div>
+    <div id="uploadZone" class="border-2 border-dashed border-gray-700 bg-gray-800 rounded p-8 text-center cursor-pointer hover:bg-gray-700 mb-4">
+      <span class="text-white">Drag & drop your PDF, DOCX, TXT, or CSV file here</span>
+      <input id="fileInput" type="file" class="hidden" accept=".pdf,.docx,.csv,.txt" />
+    </div>
+    <progress id="uploadProgressBar" value="0" max="100" class="w-full mt-2 h-2 rounded bg-gray-700"></progress>
+    <button class="btn-primary mt-4 w-full py-2 rounded bg-black text-white hover:bg-gray-800 transition" onclick="document.getElementById('fileInput').click()">Browse Files</button>
+  </div>
+</div>

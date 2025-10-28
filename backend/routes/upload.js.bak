@@ -1,0 +1,682 @@
+/**
+ * Document Upload Routes
+ * Handles file uploads, text extraction, processing, and vector storage
+ */
+
+const express = require('express');
+const router = express.Router();
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs').promises;
+const pdfParse = require('pdf-parse');
+const mammoth = require('mammoth');
+const { parse } = require('csv-parse/sync');
+
+// Import NLP pipeline modules
+const { cleanText, tokenizeSentences } = require('../nlp/preprocess');
+const { chunkText } = require('../nlp/chunk');
+const { generateBatchEmbeddings } = require('../nlp/embeddings');
+const { insertDocument, insertVectors } = require('../db/pgvector');
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+    destination: async (req, file, cb) => {
+        const uploadDir = process.env.UPLOAD_DIR || './uploads';
+        try {
+            await fs.mkdir(uploadDir, { recursive: true });
+            cb(null, uploadDir);
+        } catch (error) {
+            cb(error);
+        }
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const upload = multer({
+    storage: storage,
+    limits: {
+        fileSize: parseInt(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024 // 10MB default
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = (process.env.ALLOWED_FILE_TYPES || 'pdf,docx,txt,csv').split(',');
+        const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
+
+        if (allowedTypes.includes(ext)) {
+            cb(null, true);
+        } else {
+            cb(new Error(`File type .${ext} not allowed. Supported types: ${allowedTypes.join(', ')}`));
+        }
+    }
+});
+
+/**
+ * Extract text from PDF file
+ */
+async function extractPDF(filePath) {
+    try {
+        const dataBuffer = await fs.readFile(filePath);
+        const data = await pdfParse(dataBuffer);
+        return data.text;
+    } catch (error) {
+        console.error('PDF extraction error:', error);
+        throw new Error('Failed to extract text from PDF');
+    }
+}
+
+/**
+ * Extract text from DOCX file
+ */
+async function extractDOCX(filePath) {
+    try {
+        const result = await mammoth.extractRawText({ path: filePath });
+        return result.value;
+    } catch (error) {
+        console.error('DOCX extraction error:', error);
+        throw new Error('Failed to extract text from DOCX');
+    }
+}
+
+/**
+ * Extract text from TXT file
+ */
+async function extractTXT(filePath) {
+    try {
+        const text = await fs.readFile(filePath, 'utf-8');
+        return text;
+    } catch (error) {
+        console.error('TXT extraction error:', error);
+        throw new Error('Failed to read text file');
+    }
+}
+
+/**
+ * Extract text from CSV file
+ */
+async function extractCSV(filePath) {
+    try {
+        const fileContent = await fs.readFile(filePath, 'utf-8');
+        const records = parse(fileContent, {
+            columns: true,
+            skip_empty_lines: true
+        });
+
+        // Convert CSV records to text
+        const text = records.map(record =>
+            Object.entries(record)
+                .map(([key, value]) => `${key}: ${value}`)
+                .join(', ')
+        ).join('\n');
+
+        return text;
+    } catch (error) {
+        console.error('CSV extraction error:', error);
+        throw new Error('Failed to extract text from CSV');
+    }
+}
+
+/**
+ * Extract text based on file type
+ */
+async function extractText(filePath, fileType) {
+    console.log(`Extracting text from ${fileType} file...`);
+
+    switch (fileType.toLowerCase()) {
+        case 'pdf':
+            return await extractPDF(filePath);
+        case 'docx':
+        case 'doc':
+            return await extractDOCX(filePath);
+        case 'txt':
+            return await extractTXT(filePath);
+        case 'csv':
+            return await extractCSV(filePath);
+        default:
+            throw new Error(`Unsupported file type: ${fileType}`);
+    }
+}
+
+/**
+ * POST /api/upload
+ * Upload and process a document
+ */
+router.post('/', upload.single('file'), async (req, res) => {
+    let documentId = null;
+    let filePath = null;
+
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                error: 'No file uploaded'
+            });
+        }
+
+        const file = req.file;
+        filePath = file.path;
+        const fileType = path.extname(file.originalname).toLowerCase().replace('.', '');
+
+        console.log('\n📁 Processing upload:', file.originalname);
+        console.log(`File size: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+        console.log(`File type: ${fileType}`);
+
+        const startTime = Date.now();
+
+        // Step 1: Extract text from document
+        console.log('\n📖 Step 1: Extracting text...');
+        const rawText = await extractText(filePath, fileType);
+        console.log(`✓ Extracted ${rawText.length} characters`);
+
+        if (rawText.length === 0) {
+            throw new Error('No text content found in document');
+        }
+
+        // Step 2: Preprocess text
+        console.log('\n🧹 Step 2: Preprocessing text...');
+        const cleanedText = cleanText(rawText);
+        const sentences = tokenizeSentences(cleanedText);
+        console.log(`✓ Cleaned text: ${cleanedText.length} characters, ${sentences.length} sentences`);
+
+        // Step 3: Chunk text
+        console.log('\n✂️ Step 3: Chunking text...');
+        const chunks = chunkText(cleanedText, {
+            chunkSize: parseInt(process.env.CHUNK_SIZE) || 500,
+            overlap: parseInt(process.env.CHUNK_OVERLAP) || 50,
+            preserveSentences: true
+        });
+        console.log(`✓ Created ${chunks.length} chunks`);
+
+        if (chunks.length === 0) {
+            throw new Error('Failed to create text chunks');
+        }
+
+        // Step 4: Generate embeddings
+        console.log('\n🧠 Step 4: Generating embeddings...');
+        const texts = chunks.map(chunk => chunk.text);
+
+        let processedCount = 0;
+        const embeddings = await generateBatchEmbeddings(texts, (progress, current, total) => {
+            if (current > processedCount) {
+                processedCount = current;
+                console.log(`  Progress: ${current}/${total} (${progress.toFixed(1)}%)`);
+            }
+        });
+
+        console.log(`✓ Generated ${embeddings.length} embeddings`);
+
+        // Step 5: Save to database
+        console.log('\n💾 Step 5: Saving to database...');
+
+        // Insert document metadata
+        documentId = await insertDocument({
+            filename: file.originalname,
+            fileType: fileType,
+            fileSize: file.size,
+            metadata: {
+                characterCount: rawText.length,
+                chunkCount: chunks.length,
+                processingTime: Date.now() - startTime
+            }
+        });
+
+        console.log(`✓ Document saved with ID: ${documentId}`);
+
+        // Insert vectors
+        const vectorCount = await insertVectors(documentId, chunks, embeddings);
+        console.log(`✓ Inserted ${vectorCount} vectors`);
+
+        // Delete temporary file
+        await fs.unlink(filePath).catch(err =>
+            console.warn('Failed to delete temporary file:', err.message)
+        );
+
+        const totalTime = Date.now() - startTime;
+        console.log(`\n✅ Upload complete in ${(totalTime / 1000).toFixed(2)}s`);
+
+        res.json({
+            success: true,
+            message: 'Document uploaded and processed successfully',
+            document: {
+                id: documentId,
+                filename: file.originalname,
+                fileType: fileType,
+                fileSize: file.size,
+                chunksProcessed: chunks.length,
+                processingTime: `${(totalTime / 1000).toFixed(2)}s`
+            }
+        });
+
+    } catch (error) {
+        console.error('\n❌ Upload error:', error);
+
+        // Rollback: Delete document if it was created
+        if (documentId) {
+            try {
+                const { deleteDocument } = require('../db/pgvector');
+                await deleteDocument(documentId);
+                console.log('✓ Rolled back document creation');
+            } catch (rollbackError) {
+                console.error('Rollback failed:', rollbackError);
+            }
+        }
+
+        // Clean up file
+        if (filePath) {
+            await fs.unlink(filePath).catch(() => { });
+        }
+
+        res.status(500).json({
+            success: false,
+            error: 'Failed to process document',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * POST /api/upload/text
+ * Process raw text directly (no file upload)
+ */
+router.post('/text', async (req, res) => {
+    let documentId = null;
+
+    try {
+        const { text, filename = 'raw-text.txt' } = req.body;
+
+        if (!text || typeof text !== 'string' || text.trim().length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Valid text content is required'
+            });
+        }
+
+        console.log(`\n📝 Processing raw text (${text.length} characters)`);
+
+        const startTime = Date.now();
+
+        // Preprocess
+        const cleanedText = cleanText(text);
+        const sentences = tokenizeSentences(cleanedText);
+        console.log(`✓ Preprocessed: ${sentences.length} sentences`);
+
+        // Chunk
+        const chunks = chunkText(cleanedText, {
+            chunkSize: parseInt(process.env.CHUNK_SIZE) || 500,
+            overlap: parseInt(process.env.CHUNK_OVERLAP) || 50
+        });
+        console.log(`✓ Created ${chunks.length} chunks`);
+
+        // Generate embeddings
+        const texts = chunks.map(chunk => chunk.text);
+        const embeddings = await generateBatchEmbeddings(texts);
+        console.log(`✓ Generated ${embeddings.length} embeddings`);
+
+        // Save to database
+        documentId = await insertDocument({
+            filename: filename,
+            fileType: 'txt',
+            fileSize: text.length,
+            metadata: {
+                source: 'raw_text',
+                characterCount: text.length,
+                chunkCount: chunks.length
+            }
+        });
+
+        await insertVectors(documentId, chunks, embeddings);
+
+        const totalTime = Date.now() - startTime;
+
+        res.json({
+            success: true,
+            message: 'Text processed successfully',
+            document: {
+                id: documentId,
+                filename: filename,
+                chunksProcessed: chunks.length,
+                processingTime: `${(totalTime / 1000).toFixed(2)}s`
+            }
+        });
+
+    } catch (error) {
+        console.error('Text processing error:', error);
+
+        // Rollback if needed
+        if (documentId) {
+            try {
+                const { deleteDocument } = require('../db/pgvector');
+                await deleteDocument(documentId);
+            } catch (rollbackError) {
+                console.error('Rollback failed:', rollbackError);
+            }
+        }
+
+        res.status(500).json({
+            success: false,
+            error: 'Failed to process text',
+            message: error.message
+        });
+    }
+});
+
+module.exports = router;
+
+            const embedding = result.embedding.values;
+
+            // Validate embedding dimensions
+            const expectedDimensions = parseInt(process.env.VECTOR_DIMENSIONS) || 768;
+            if (embedding.length !== expectedDimensions) {
+                throw new Error(`Embedding dimension mismatch: expected ${expectedDimensions}, got ${embedding.length}`);
+            }
+
+            // Cache the result
+            if (useCache) {
+                embeddingCache.set(cacheKey, embedding);
+            }
+
+            return embedding;
+
+        } catch (error) {
+            lastError = error;
+            console.error(`Embedding generation attempt ${attempt + 1} failed:`, error.message);
+
+            // Exponential backoff: 1s, 2s, 4s, etc.
+            if (attempt < maxRetries - 1) {
+                const backoffTime = Math.pow(2, attempt) * 1000;
+                console.log(`Retrying in ${backoffTime}ms...`);
+                await new Promise(resolve => setTimeout(resolve, backoffTime));
+            }
+        }
+    }
+
+    throw new Error(`Failed to generate embedding after ${maxRetries} attempts: ${lastError.message}`);
+}
+
+/**
+ * Generate embeddings for multiple texts in batch with progress tracking
+ * 
+ * @param {Array<string>} texts - Array of texts to embed
+ * @param {Function} progressCallback - Optional callback for progress updates
+ * @returns {Promise<Array<Array<number>>>} Array of embedding vectors
+ */
+async function generateBatchEmbeddings(texts, progressCallback = null) {
+    if (!Array.isArray(texts) || texts.length === 0) {
+        throw new Error('Invalid texts array for batch embedding');
+    }
+
+    console.log(`Generating embeddings for ${texts.length} texts...`);
+
+    const embeddings = [];
+    const batchSize = 10; // Process in smaller batches to avoid overwhelming API
+
+    for (let i = 0; i < texts.length; i += batchSize) {
+        const batch = texts.slice(i, Math.min(i + batchSize, texts.length));
+        const batchPromises = batch.map(text => generateEmbedding(text));
+
+        try {
+            const batchResults = await Promise.all(batchPromises);
+            embeddings.push(...batchResults);
+
+            // Progress callback
+            if (progressCallback && typeof progressCallback === 'function') {
+                const progress = Math.min(((i + batch.length) / texts.length) * 100, 100);
+                progressCallback(progress, i + batch.length, texts.length);
+            }
+
+            console.log(`✓ Processed ${Math.min(i + batchSize, texts.length)}/${texts.length} embeddings`);
+
+        } catch (error) {
+            console.error(`Error processing batch ${i / batchSize + 1}:`, error);
+            throw error;
+        }
+    }
+
+    return embeddings;
+}
+
+/**
+ * Calculate cosine similarity between two vectors
+ * Used for validating embedding quality and similarity checks
+ * 
+ * @param {Array<number>} vec1 - First vector
+ * @param {Array<number>} vec2 - Second vector
+ * @returns {number} Cosine similarity score (0 to 1)
+ */
+function cosineSimilarity(vec1, vec2) {
+    if (!Array.isArray(vec1) || !Array.isArray(vec2)) {
+        throw new Error('Invalid vectors for similarity calculation');
+    }
+
+    if (vec1.length !== vec2.length) {
+        throw new Error('Vectors must have same dimensions');
+    }
+
+    let dotProduct = 0;
+    let norm1 = 0;
+    let norm2 = 0;
+
+    for (let i = 0; i < vec1.length; i++) {
+        dotProduct += vec1[i] * vec2[i];
+        norm1 += vec1[i] * vec1[i];
+        norm2 += vec2[i] * vec2[i];
+    }
+
+    norm1 = Math.sqrt(norm1);
+    norm2 = Math.sqrt(norm2);
+
+    if (norm1 === 0 || norm2 === 0) {
+        return 0;
+    }
+
+    return dotProduct / (norm1 * norm2);
+}
+
+/**
+ * Normalize embedding vector (ensure unit length)
+ * Some vector databases require normalized vectors
+ * 
+ * @param {Array<number>} embedding - Vector to normalize
+ * @returns {Array<number>} Normalized vector
+ */
+function normalizeEmbedding(embedding) {
+    if (!Array.isArray(embedding)) {
+        throw new Error('Invalid embedding for normalization');
+    }
+
+    const magnitude = Math.sqrt(
+        embedding.reduce((sum, val) => sum + val * val, 0)
+    );
+
+    if (magnitude === 0) {
+        return embedding;
+    }
+
+    return embedding.map(val => val / magnitude);
+}
+
+/**
+ * Validate embedding vector
+ * Ensures embedding meets quality standards
+ * 
+ * @param {Array<number>} embedding - Embedding to validate
+ * @returns {Object} Validation result
+ */
+function validateEmbedding(embedding) {
+    const validation = {
+        isValid: true,
+        errors: [],
+        warnings: []
+    };
+
+    if (!Array.isArray(embedding)) {
+        validation.isValid = false;
+        validation.errors.push('Embedding is not an array');
+        return validation;
+    }
+
+    const expectedDimensions = parseInt(process.env.VECTOR_DIMENSIONS) || 768;
+    if (embedding.length !== expectedDimensions) {
+        validation.isValid = false;
+        validation.errors.push(`Expected ${expectedDimensions} dimensions, got ${embedding.length}`);
+    }
+
+    // Check for NaN or infinite values
+    const hasInvalidValues = embedding.some(val =>
+        !isFinite(val) || isNaN(val)
+    );
+
+    if (hasInvalidValues) {
+        validation.isValid = false;
+        validation.errors.push('Embedding contains NaN or infinite values');
+    }
+
+    // Check if vector is all zeros (suspicious)
+    const isAllZeros = embedding.every(val => val === 0);
+    if (isAllZeros) {
+        validation.warnings.push('Embedding vector is all zeros');
+    }
+
+    // Check magnitude (should be close to 1 for normalized vectors)
+    const magnitude = Math.sqrt(
+        embedding.reduce((sum, val) => sum + val * val, 0)
+    );
+
+    if (magnitude < 0.1 || magnitude > 10) {
+        validation.warnings.push(`Unusual vector magnitude: ${magnitude.toFixed(4)}`);
+    }
+
+    return validation;
+}
+
+/**
+ * Get cache statistics
+ * 
+ * @returns {Object} Cache statistics
+ */
+function getCacheStats() {
+    return {
+        size: embeddingCache.size,
+        maxSize: embeddingCache.max,
+        hits: embeddingCache.calculatedSize || 0,
+        hitRate: embeddingCache.size > 0 ?
+            ((embeddingCache.calculatedSize || 0) / embeddingCache.size * 100).toFixed(2) + '%' : '0%'
+    };
+}
+
+/**
+ * Clear embedding cache
+ */
+function clearCache() {
+    embeddingCache.clear();
+    console.log('✓ Embedding cache cleared');
+}
+
+/**
+ * Generate query embedding optimized for search
+ * Uses the same model but with optional query-specific preprocessing
+ * 
+ * @param {string} query - Search query
+ * @returns {Promise<Array<number>>} Query embedding
+ */
+async function generateQueryEmbedding(query) {
+    if (!query || typeof query !== 'string') {
+        throw new Error('Invalid query for embedding generation');
+    }
+
+    // Preprocess query (lowercase, trim)
+    const processedQuery = query.toLowerCase().trim();
+
+    // Generate embedding with caching enabled
+    return await generateEmbedding(processedQuery, { useCache: true });
+}
+
+/**
+ * Batch process with error handling and partial results
+ * Continues processing even if some texts fail
+ * 
+ * @param {Array<string>} texts - Texts to embed
+ * @param {Function} progressCallback - Progress callback
+ * @returns {Promise<Object>} Results with embeddings and errors
+ */
+async function generateBatchWithErrorHandling(texts, progressCallback = null) {
+    if (!Array.isArray(texts) || texts.length === 0) {
+        throw new Error('Invalid texts array');
+    }
+
+    const results = {
+        embeddings: [],
+        errors: [],
+        successCount: 0,
+        failureCount: 0
+    };
+
+    for (let i = 0; i < texts.length; i++) {
+        try {
+            const embedding = await generateEmbedding(texts[i]);
+            results.embeddings.push(embedding);
+            results.successCount++;
+
+            if (progressCallback) {
+                progressCallback((i + 1) / texts.length * 100, i + 1, texts.length);
+            }
+
+        } catch (error) {
+            console.error(`Failed to generate embedding for text ${i}:`, error.message);
+            results.embeddings.push(null);
+            results.errors.push({ index: i, error: error.message });
+            results.failureCount++;
+        }
+    }
+
+    return results;
+}
+
+/**
+ * Test embedding generation with sample text
+ * Useful for validating API connection and model configuration
+ * 
+ * @returns {Promise<Object>} Test results
+ */
+async function testEmbeddingGeneration() {
+    const testText = "Financial revenue increased by 15% in Q4 2024.";
+
+    console.log('Testing embedding generation...');
+    const startTime = Date.now();
+
+    try {
+        const embedding = await generateEmbedding(testText, { useCache: false });
+        const duration = Date.now() - startTime;
+
+        const validation = validateEmbedding(embedding);
+
+        return {
+            success: true,
+            duration: `${duration}ms`,
+            dimensions: embedding.length,
+            sampleValues: embedding.slice(0, 5),
+            validation
+        };
+
+    } catch (error) {
+        return {
+            success: false,
+            error: error.message
+        };
+    }
+}
+
+// Export functions
+module.exports = {
+    generateEmbedding,
+    generateBatchEmbeddings,
+    generateBatchWithErrorHandling,
+    generateQueryEmbedding,
+    cosineSimilarity,
+    normalizeEmbedding,
+    validateEmbedding,
+    getCacheStats,
+    clearCache,
+    testEmbeddingGeneration
+};
