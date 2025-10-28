@@ -1,6 +1,6 @@
 # Financial RAG Chatbot
 
-A production-ready Retrieval-Augmented Generation (RAG) chatbot specialized in financial document analysis. Built with Node.js, Express, PostgreSQL with pgvector, and Google Gemini API.
+A production-ready Retrieval-Augmented Generation (RAG) chatbot specialized in financial document analysis. Built with Node.js, Express, Pinecone with pgvector, and Google Gemini API.
 
 ## 🌟 Features
 
