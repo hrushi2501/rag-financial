@@ -75,6 +75,9 @@ async function loadDocumentsList() {
 
     try {
         const response = await fetch('/api/docs');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
         const data = await response.json();
 
         if (!data.success || !data.documents || data.documents.length === 0) {
@@ -85,9 +88,9 @@ async function loadDocumentsList() {
 
         // Display stats
         if (documentsStats) {
-            const totalSize = data.documents.reduce((sum, doc) => sum + (doc.file_size || 0), 0);
             const totalChunks = data.documents.reduce((sum, doc) => sum + (doc.total_chunks || 0), 0);
 
+            // Remove Total Size stat for now (backend doesn't provide size yet)
             documentsStats.innerHTML = `
                 <div class="stat-card">
                     <i class="fas fa-file"></i>
@@ -103,13 +106,6 @@ async function loadDocumentsList() {
                         <div class="stat-label">Chunks</div>
                     </div>
                 </div>
-                <div class="stat-card">
-                    <i class="fas fa-hdd"></i>
-                    <div>
-                        <div class="stat-value">${(totalSize / 1024 / 1024).toFixed(2)} MB</div>
-                        <div class="stat-label">Total Size</div>
-                    </div>
-                </div>
             `;
         }
 
@@ -122,8 +118,7 @@ async function loadDocumentsList() {
                 <div class="document-info">
                     <div class="document-name">${escapeHtml(doc.filename)}</div>
                     <div class="document-meta">
-                        <span>${doc.file_type.toUpperCase()}</span>
-                        <span>${(doc.file_size / 1024).toFixed(2)} KB</span>
+                        <span>${(doc.file_type || 'unknown').toUpperCase()}</span>
                         <span>${doc.total_chunks || 0} chunks</span>
                         <span>${new Date(doc.upload_date).toLocaleDateString()}</span>
                     </div>

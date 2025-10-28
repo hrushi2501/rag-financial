@@ -61,7 +61,8 @@ router.post('/', async (req, res) => {
             console.log('Retrieving context from documents...');
             const queryEmbedding = await generateQueryEmbedding(message);
 
-            contextChunks = await searchSimilarVectors(queryEmbedding, topK, 0.5, filters);
+            // Lowered threshold to 0.3 to improve recall; precision is handled by prompt grounding
+            contextChunks = await searchSimilarVectors(queryEmbedding, topK, 0.3, filters);
 
             console.log(`✓ Retrieved ${contextChunks.length} context chunks`);
         } else {
@@ -225,7 +226,8 @@ router.post('/stream', async (req, res) => {
         let contextChunks = [];
         if (includeContext) {
             const queryEmbedding = await generateQueryEmbedding(message);
-            contextChunks = await searchSimilarVectors(queryEmbedding, topK, 0.5, filters);
+            // Lowered threshold to 0.3 to improve recall for streaming as well
+            contextChunks = await searchSimilarVectors(queryEmbedding, topK, 0.3, filters);
         }
 
         // Send context event
