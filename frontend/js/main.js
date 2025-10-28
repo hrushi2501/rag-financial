@@ -1,15 +1,43 @@
-/**
- * Main Application Logic
- * Handles view switching, initialization, and global UI interactions
- */
+// App shell: theme, nav, health, docs list
 
 // Global state
 let currentView = 'upload';
+const THEME_KEY = 'financial-rag-theme';
 
-/**
- * Switch between different views
- * @param {string} viewName - Name of the view to show
- */
+// Theme
+function initTheme() {
+    const saved = localStorage.getItem(THEME_KEY) || 'dark';
+    setTheme(saved);
+    const btn = document.getElementById('themeToggle');
+    if (btn) {
+    // sync aria-checked
+        btn.setAttribute('aria-checked', document.body.classList.contains('dark') ? 'true' : 'false');
+        btn.addEventListener('click', () => {
+            const isDark = document.body.classList.contains('dark');
+            setTheme(isDark ? 'light' : 'dark');
+        });
+    }
+}
+
+function setTheme(mode) {
+    if (mode === 'light') {
+        document.body.classList.remove('dark');
+        document.body.classList.add('light');
+    } else {
+        document.body.classList.remove('light');
+        document.body.classList.add('dark');
+        mode = 'dark';
+    }
+    localStorage.setItem(THEME_KEY, mode);
+    const btn = document.getElementById('themeToggle');
+    if (btn) {
+    // aria-checked reflects dark mode
+        const isDark = mode === 'dark';
+        btn.setAttribute('aria-checked', isDark ? 'true' : 'false');
+    }
+}
+
+// View switcher
 function switchView(viewName) {
     // Hide all views
     const views = document.querySelectorAll('.view');
@@ -32,15 +60,13 @@ function switchView(viewName) {
         activeBtn.classList.add('active');
     }
 
-    // Load data for specific views
+    // Lazy-load per view
     if (viewName === 'documents') {
         loadDocumentsList();
     }
 }
 
-/**
- * Check system health status
- */
+// Health
 async function checkSystemHealth() {
     const statusIndicator = document.getElementById('statusIndicator');
     const statusText = document.getElementById('statusText');
@@ -49,34 +75,49 @@ async function checkSystemHealth() {
         const response = await fetch('/api/health');
         const data = await response.json();
 
+        // Map to Online/Degraded/Offline
         if (data.status === 'healthy') {
-            statusIndicator.className = 'status-indicator online';
+            statusIndicator.className = 'status-indicator healthy';
             statusText.textContent = 'Online';
-        } else {
-            statusIndicator.className = 'status-indicator warning';
+        } else if (data.status === 'degraded' || (data.details && (data.details.embeddings === 'unavailable' || data.details.pinecone === 'unavailable'))) {
+            statusIndicator.className = 'status-indicator degraded';
             statusText.textContent = 'Degraded';
+        } else {
+            statusIndicator.className = 'status-indicator unhealthy';
+            statusText.textContent = 'Offline';
         }
     } catch (error) {
-        statusIndicator.className = 'status-indicator offline';
+        statusIndicator.className = 'status-indicator unhealthy';
         statusText.textContent = 'Offline';
     }
 }
 
-/**
- * Load documents list (from db.js functionality)
- */
+// Documents list
 async function loadDocumentsList() {
     const documentsList = document.getElementById('documentsList');
     const documentsStats = document.getElementById('documentsStats');
 
     if (!documentsList) return;
 
-    documentsList.innerHTML = '<div class="loading">Loading documents...</div>';
+        documentsList.innerHTML = `
+            <div class="document-card">
+                <div class="skeleton" style="height:16px;width:180px;margin-bottom:12px"></div>
+                <div class="skeleton" style="height:12px;width:60%;margin-bottom:8px"></div>
+                <div class="skeleton" style="height:12px;width:40%"></div>
+            </div>
+            <div class="document-card">
+                <div class="skeleton" style="height:16px;width:220px;margin-bottom:12px"></div>
+                <div class="skeleton" style="height:12px;width:55%;margin-bottom:8px"></div>
+                <div class="skeleton" style="height:12px;width:35%"></div>
+            </div>
+        `;
 
     try {
         const response = await fetch('/api/docs');
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            const err = new Error(`HTTP ${response.status}`);
+            err.status = response.status;
+            throw err;
         }
         const data = await response.json();
 
@@ -86,7 +127,7 @@ async function loadDocumentsList() {
             return;
         }
 
-        // Display stats
+        // Stats
         if (documentsStats) {
             const totalChunks = data.documents.reduce((sum, doc) => sum + (doc.total_chunks || 0), 0);
 
@@ -109,7 +150,7 @@ async function loadDocumentsList() {
             `;
         }
 
-        // Display documents
+        // Cards
         documentsList.innerHTML = data.documents.map(doc => `
             <div class="document-card">
                 <div class="document-icon">
@@ -118,9 +159,9 @@ async function loadDocumentsList() {
                 <div class="document-info">
                     <div class="document-name">${escapeHtml(doc.filename)}</div>
                     <div class="document-meta">
-                        <span>${(doc.file_type || 'unknown').toUpperCase()}</span>
-                        <span>${doc.total_chunks || 0} chunks</span>
-                        <span>${new Date(doc.upload_date).toLocaleDateString()}</span>
+                        <span class="chip">${(doc.file_type || 'unknown').toUpperCase()}</span>
+                        <span class="chip">${doc.total_chunks || 0} chunks</span>
+                        <span class="chip">${new Date(doc.upload_date).toLocaleDateString()}</span>
                     </div>
                 </div>
                 <div class="document-actions">
@@ -136,13 +177,12 @@ async function loadDocumentsList() {
 
     } catch (error) {
         console.error('Error loading documents:', error);
-        documentsList.innerHTML = '<div class="error-state">Failed to load documents</div>';
+        const issue = deriveNetworkIssue(error);
+        documentsList.innerHTML = `<div class="error-state">Failed to load documents${issue ? ` — ${issue}` : ''}</div>`;
     }
 }
 
-/**
- * Get appropriate icon for file type
- */
+// Icon per file type
 function getFileIcon(fileType) {
     const icons = {
         'pdf': 'pdf',
@@ -154,18 +194,14 @@ function getFileIcon(fileType) {
     return icons[fileType.toLowerCase()] || 'alt';
 }
 
-/**
- * View document details
- */
+// View document (placeholder)
 async function viewDocument(documentId) {
     console.log('Viewing document:', documentId);
     // TODO: Implement document viewer modal
     alert(`Document viewer coming soon!\nDocument ID: ${documentId}`);
 }
 
-/**
- * Delete document with confirmation
- */
+// Delete document
 async function deleteDocument(documentId) {
     if (!confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
         return;
@@ -190,18 +226,14 @@ async function deleteDocument(documentId) {
     }
 }
 
-/**
- * Escape HTML to prevent XSS
- */
+// Escape HTML
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
 
-/**
- * Show notification (referenced from chat.js)
- */
+// Toast
 function showNotification(message, type) {
     const container = document.getElementById('toastContainer');
     if (!container) {
@@ -232,11 +264,29 @@ function showNotification(message, type) {
     }, 3000);
 }
 
-/**
- * Initialize application
- */
+// Explain network errors briefly
+function deriveNetworkIssue(error) {
+    if (typeof navigator !== 'undefined' && navigator && navigator.onLine === false) {
+        return 'Internet disconnected';
+    }
+    if (error && (error.name === 'TypeError' || /Failed to fetch/i.test(error.message))) {
+        return 'Network error or CORS blocked';
+    }
+    if (error && error.status) {
+        const code = error.status;
+        if (code === 429) return 'Rate limited by API';
+        if (code === 503) return 'Service temporarily unavailable';
+        if (code === 500) return 'Server error';
+        if (code === 404) return 'Endpoint not found';
+        if (code >= 400 && code < 500) return 'Client error';
+        if (code >= 500) return 'Server error';
+    }
+    return '';
+}
+
+// Init
 function initializeApp() {
-    console.log('Initializing Financial RAG System...');
+    console.log('Init app');
 
     // Setup navigation
     const navBtns = document.querySelectorAll('.nav-btn');
@@ -257,12 +307,29 @@ function initializeApp() {
         refreshDocsBtn.addEventListener('click', loadDocumentsList);
     }
 
-    console.log('✓ Application initialized');
+    // Help modal handling
+    const helpBtn = document.getElementById('helpBtn');
+    const helpModal = document.getElementById('helpModal');
+    if (helpBtn && helpModal) {
+        const open = () => { helpModal.classList.remove('hidden'); helpModal.setAttribute('aria-hidden', 'false'); };
+        const close = () => { helpModal.classList.add('hidden'); helpModal.setAttribute('aria-hidden', 'true'); };
+        helpBtn.addEventListener('click', open);
+        helpModal.addEventListener('click', (e) => {
+            const target = e.target;
+            if ((target.closest && target.closest('[data-close="helpModal"]')) || target.classList.contains('modal-backdrop')) {
+                close();
+            }
+        });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    }
+
+    console.log('App ready');
 }
 
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeApp);
+    document.addEventListener('DOMContentLoaded', () => { initializeApp(); initTheme(); });
 } else {
     initializeApp();
+    initTheme();
 }

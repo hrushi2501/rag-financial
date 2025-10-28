@@ -1,16 +1,10 @@
-/**
- * Chat Interface Logic
- * Handles message sending, display, streaming, and UI interactions
- */
+// Chat UI: send, render, stream, and small helpers
 
 const API_BASE = '/api';
 let conversationId = null;
 let isProcessing = false;
 
-/**
- * Send message to chat API and display response
- * @param {string} message - User message
- */
+// Send a message
 async function sendMessage(message) {
     if (!message || message.trim().length === 0) {
         showNotification('Please enter a message', 'warning');
@@ -31,14 +25,14 @@ async function sendMessage(message) {
     try {
         isProcessing = true;
 
-        // Disable input while processing
+    // Disable input while processing
         if (chatInput) chatInput.disabled = true;
         if (chatSendBtn) chatSendBtn.disabled = true;
 
-        // Display user message
+    // Show user message
         displayMessage(message, true);
 
-        // Show typing indicator
+    // Typing indicator
         showTypingIndicator();
 
         // Send to API
@@ -56,19 +50,27 @@ async function sendMessage(message) {
         });
 
         if (!response.ok) {
+            let msg = `HTTP ${response.status}`;
+            try {
                 const errorData = await response.json();
-                const error = new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                msg = errorData.error || msg;
+            } catch {}
+            const error = new Error(msg);
+            error.status = response.status;
+            try {
+                const errorData = await response.clone().json();
                 error.retryable = errorData.retryable;
-                throw error;
+            } catch {}
+            throw error;
         }
 
         const data = await response.json();
 
-        // Hide typing indicator
+    // Hide typing indicator
         hideTypingIndicator();
 
         if (data.success) {
-            // Display bot response
+            // Show bot response
                 displayMessage(data.response || data.answer, false, data.citations || data.sources);
 
             // Update conversation ID
@@ -76,7 +78,7 @@ async function sendMessage(message) {
                 conversationId = data.conversationId;
             }
 
-            // Auto-scroll to bottom
+            // Scroll
             scrollChatToBottom();
         } else {
             throw new Error(data.error || 'Failed to get response');
@@ -85,23 +87,20 @@ async function sendMessage(message) {
     } catch (error) {
         console.error('Chat error:', error);
         hideTypingIndicator();
-        
-            // Show retry hint for retryable errors
-            const retryHint = error.retryable ? ' (Retrying automatically...)' : '';
+        const issue = deriveNetworkIssue(error);
+    const retryHint = error.retryable ? ' (retrying...)' : '';
         displayMessage(
-                `Sorry, I encountered an error: ${error.message}${retryHint}`,
+            `Sorry, I encountered an error: ${error.message}${issue ? ` — ${issue}` : ''}${retryHint}`,
             false,
             null,
             true
         );
-        
-            // Auto-retry for retryable errors after 3 seconds
-            if (error.retryable && message) {
-                setTimeout(() => {
-                    console.log('Auto-retrying message...');
-                    sendMessage(message);
-                }, 3000);
-            }
+        if (error.retryable && message) {
+            setTimeout(() => {
+                console.log('Auto-retrying message...');
+                sendMessage(message);
+            }, 3000);
+        }
     } finally {
         isProcessing = false;
         if (chatInput) {
@@ -112,13 +111,7 @@ async function sendMessage(message) {
     }
 }
 
-/**
- * Display a message in the chat container
- * @param {string} content - Message content
- * @param {boolean} isUser - Whether message is from user
- * @param {Array} sources - Source documents (optional)
- * @param {boolean} isError - Whether message is an error
- */
+// Render a message
 function displayMessage(content, isUser, sources = null, isError = false) {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
@@ -133,7 +126,7 @@ function displayMessage(content, isUser, sources = null, isError = false) {
         '<i class="fas fa-user"></i>' :
         '<i class="fas fa-robot"></i>';
 
-    // Message content
+    // Content
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
 
@@ -141,7 +134,7 @@ function displayMessage(content, isUser, sources = null, isError = false) {
     const formattedContent = formatResponse(content);
     contentDiv.innerHTML = `<p>${formattedContent}</p>`;
 
-    // Add sources if available
+    // Sources
     if (sources && sources.length > 0) {
         const sourcesDiv = document.createElement('div');
         sourcesDiv.className = 'message-sources';
@@ -167,11 +160,7 @@ function displayMessage(content, isUser, sources = null, isError = false) {
     scrollChatToBottom();
 }
 
-/**
- * Format response with basic markdown support
- * @param {string} text - Text to format
- * @returns {string} Formatted HTML
- */
+// Basic markdown formatting
 function formatResponse(text) {
     if (!text) return '';
 
@@ -180,7 +169,6 @@ function formatResponse(text) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 
-    // Convert markdown-style formatting
     // Bold: **text** or __text__
     text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     text = text.replace(/__(.*?)__/g, '<strong>$1</strong>');
@@ -204,9 +192,7 @@ function formatResponse(text) {
     return text;
 }
 
-/**
- * Show typing indicator
- */
+// Typing indicator
 function showTypingIndicator() {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
@@ -235,9 +221,7 @@ function showTypingIndicator() {
     scrollChatToBottom();
 }
 
-/**
- * Hide typing indicator
- */
+// Hide typing indicator
 function hideTypingIndicator() {
     const indicator = document.getElementById('typingIndicator');
     if (indicator) {
@@ -245,9 +229,7 @@ function hideTypingIndicator() {
     }
 }
 
-/**
- * Scroll chat to bottom
- */
+// Scroll to bottom
 function scrollChatToBottom() {
     const chatMessages = document.getElementById('chatMessages');
     if (chatMessages) {
@@ -255,9 +237,7 @@ function scrollChatToBottom() {
     }
 }
 
-/**
- * Clear chat history
- */
+// Clear chat
 function clearChat() {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
@@ -273,11 +253,7 @@ function clearChat() {
     showNotification('Chat cleared', 'success');
 }
 
-/**
- * Show notification toast
- * @param {string} message - Notification message
- * @param {string} type - Type: success, warning, error, info
- */
+// Toast
 function showNotification(message, type = 'info') {
     const container = document.getElementById('toastContainer');
     if (!container) return;
@@ -298,9 +274,7 @@ function showNotification(message, type = 'info') {
     }, 3000);
 }
 
-/**
- * Get icon for notification type
- */
+// Icon map
 function getIconForType(type) {
     const icons = {
         success: 'check-circle',
@@ -311,9 +285,27 @@ function getIconForType(type) {
     return icons[type] || 'info-circle';
 }
 
-/**
- * Initialize chat functionality
- */
+// Friendly network explanation
+function deriveNetworkIssue(error) {
+    if (typeof navigator !== 'undefined' && navigator && navigator.onLine === false) {
+        return 'Internet disconnected';
+    }
+    if (error && (error.name === 'TypeError' || /Failed to fetch/i.test(error.message))) {
+        return 'Network error or CORS blocked';
+    }
+    if (error && error.status) {
+        const code = error.status;
+        if (code === 429) return 'Rate limited by API';
+        if (code === 503) return 'Service temporarily unavailable';
+        if (code === 500) return 'Server error';
+        if (code === 404) return 'Endpoint not found';
+        if (code >= 400 && code < 500) return 'Client error';
+        if (code >= 500) return 'Server error';
+    }
+    return '';
+}
+
+// Init chat
 function initializeChat() {
     const chatInput = document.getElementById('chatInput');
     const chatSendBtn = document.getElementById('chatSendBtn');
@@ -330,7 +322,7 @@ function initializeChat() {
         });
     }
 
-    // Enter key to send (Shift+Enter for new line)
+    // Enter to send (Shift+Enter = newline)
     if (chatInput) {
         chatInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -339,7 +331,7 @@ function initializeChat() {
             }
         });
 
-        // Auto-resize textarea
+    // Auto-resize textarea
         chatInput.addEventListener('input', () => {
             chatInput.style.height = 'auto';
             chatInput.style.height = chatInput.scrollHeight + 'px';
