@@ -1,45 +1,34 @@
-/**
- * Embedding Generation Module
- * Generates vector embeddings using Google Gemini API with caching and retry logic
- */
+// Embeddings via Gemini with simple cache + retry
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { LRUCache } = require('lru-cache');
 require('dotenv').config();
 
-// Initialize Gemini API client
+// Gemini client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const embeddingModel = process.env.EMBEDDING_MODEL || 'text-embedding-004';
 
-// Initialize LRU cache for embeddings (max 1000 entries, max age 1 hour)
+// LRU cache (max 1000, 1h)
 const embeddingCache = new LRUCache({
     max: 1000,
     ttl: 1000 * 60 * 60, // 1 hour
     updateAgeOnGet: true
 });
 
-// Rate limiting configuration
+// Simple rate limit
 const RATE_LIMIT = {
     requestsPerMinute: 60,
     requestQueue: [],
     lastRequestTime: 0
 };
 
-/**
- * Generate hash for cache key
- * 
- * @param {string} text - Text to hash
- * @returns {string} Hash string
- */
+// Cache key
 function generateCacheKey(text) {
     const crypto = require('crypto');
     return crypto.createHash('md5').update(text).digest('hex');
 }
 
-/**
- * Wait for rate limit compliance
- * Implements simple rate limiting to avoid API throttling
- */
+// Wait for rate limit
 async function waitForRateLimit() {
     const now = Date.now();
     const timeSinceLastRequest = now - RATE_LIMIT.lastRequestTime;
@@ -53,13 +42,7 @@ async function waitForRateLimit() {
     RATE_LIMIT.lastRequestTime = Date.now();
 }
 
-/**
- * Generate embedding for a single text with exponential backoff retry
- * 
- * @param {string} text - Text to embed
- * @param {Object} options - Generation options
- * @returns {Promise<Array<number>>} Embedding vector
- */
+// One embedding with retry
 async function generateEmbedding(text, options = {}) {
     const {
         useCache = true,
@@ -71,10 +54,10 @@ async function generateEmbedding(text, options = {}) {
         throw new Error('Invalid text input for embedding generation');
     }
 
-    // Check cache first
+    // Cache first
     const cacheKey = generateCacheKey(text);
     if (useCache && embeddingCache.has(cacheKey)) {
-        console.log('✓ Retrieved embedding from cache');
+        console.log('Embedding from cache');
         return embeddingCache.get(cacheKey);
     }
 
@@ -82,10 +65,10 @@ async function generateEmbedding(text, options = {}) {
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
-            // Wait for rate limit
+            // Rate limit
             await waitForRateLimit();
 
-            // Generate embedding with timeout
+            // Generate with timeout
             const model = genAI.getGenerativeModel({ model: embeddingModel });
 
             const embeddingPromise = model.embedContent(text);
@@ -101,13 +84,13 @@ async function generateEmbedding(text, options = {}) {
 
             const embedding = result.embedding.values;
 
-            // Validate embedding dimensions
+            // Validate dimensions
             const expectedDimensions = parseInt(process.env.VECTOR_DIMENSIONS) || 768;
             if (embedding.length !== expectedDimensions) {
                 throw new Error(`Embedding dimension mismatch: expected ${expectedDimensions}, got ${embedding.length}`);
             }
 
-            // Cache the result
+            // Cache
             if (useCache) {
                 embeddingCache.set(cacheKey, embedding);
             }
@@ -116,12 +99,12 @@ async function generateEmbedding(text, options = {}) {
 
         } catch (error) {
             lastError = error;
-            console.error(`Embedding generation attempt ${attempt + 1} failed:`, error.message);
+            console.error(`Embedding attempt ${attempt + 1} failed:`, error.message);
 
             // Exponential backoff: 1s, 2s, 4s, etc.
             if (attempt < maxRetries - 1) {
                 const backoffTime = Math.pow(2, attempt) * 1000;
-                console.log(`Retrying in ${backoffTime}ms...`);
+                console.log(`Retry in ${backoffTime}ms`);
                 await new Promise(resolve => setTimeout(resolve, backoffTime));
             }
         }
@@ -130,19 +113,13 @@ async function generateEmbedding(text, options = {}) {
     throw new Error(`Failed to generate embedding after ${maxRetries} attempts: ${lastError.message}`);
 }
 
-/**
- * Generate embeddings for multiple texts in batch with progress tracking
- * 
- * @param {Array<string>} texts - Array of texts to embed
- * @param {Function} progressCallback - Optional callback for progress updates
- * @returns {Promise<Array<Array<number>>>} Array of embedding vectors
- */
+// Batch embeddings with optional progress
 async function generateBatchEmbeddings(texts, progressCallback = null) {
     if (!Array.isArray(texts) || texts.length === 0) {
         throw new Error('Invalid texts array for batch embedding');
     }
 
-    console.log(`Generating embeddings for ${texts.length} texts...`);
+    console.log(`Batch size: ${texts.length}`);
 
     const embeddings = [];
     const batchSize = 10; // Process in smaller batches to avoid overwhelming API
@@ -155,13 +132,12 @@ async function generateBatchEmbeddings(texts, progressCallback = null) {
             const batchResults = await Promise.all(batchPromises);
             embeddings.push(...batchResults);
 
-            // Progress callback
+            // Progress
             if (progressCallback && typeof progressCallback === 'function') {
                 const progress = Math.min(((i + batch.length) / texts.length) * 100, 100);
                 progressCallback(progress, i + batch.length, texts.length);
             }
-
-            console.log(`✓ Processed ${Math.min(i + batchSize, texts.length)}/${texts.length} embeddings`);
+            console.log(`Processed ${Math.min(i + batchSize, texts.length)}/${texts.length}`);
 
         } catch (error) {
             console.error(`Error processing batch ${i / batchSize + 1}:`, error);
@@ -172,14 +148,7 @@ async function generateBatchEmbeddings(texts, progressCallback = null) {
     return embeddings;
 }
 
-/**
- * Calculate cosine similarity between two vectors
- * Used for validating embedding quality and similarity checks
- * 
- * @param {Array<number>} vec1 - First vector
- * @param {Array<number>} vec2 - Second vector
- * @returns {number} Cosine similarity score (0 to 1)
- */
+// Cosine similarity
 function cosineSimilarity(vec1, vec2) {
     if (!Array.isArray(vec1) || !Array.isArray(vec2)) {
         throw new Error('Invalid vectors for similarity calculation');
@@ -209,13 +178,7 @@ function cosineSimilarity(vec1, vec2) {
     return dotProduct / (norm1 * norm2);
 }
 
-/**
- * Normalize embedding vector (ensure unit length)
- * Some vector databases require normalized vectors
- * 
- * @param {Array<number>} embedding - Vector to normalize
- * @returns {Array<number>} Normalized vector
- */
+// Normalize to unit length
 function normalizeEmbedding(embedding) {
     if (!Array.isArray(embedding)) {
         throw new Error('Invalid embedding for normalization');
@@ -232,13 +195,7 @@ function normalizeEmbedding(embedding) {
     return embedding.map(val => val / magnitude);
 }
 
-/**
- * Validate embedding vector
- * Ensures embedding meets quality standards
- * 
- * @param {Array<number>} embedding - Embedding to validate
- * @returns {Object} Validation result
- */
+// Validate embedding vector
 function validateEmbedding(embedding) {
     const validation = {
         isValid: true,
@@ -258,7 +215,7 @@ function validateEmbedding(embedding) {
         validation.errors.push(`Expected ${expectedDimensions} dimensions, got ${embedding.length}`);
     }
 
-    // Check for NaN or infinite values
+    // NaN/Inf
     const hasInvalidValues = embedding.some(val =>
         !isFinite(val) || isNaN(val)
     );
@@ -268,13 +225,13 @@ function validateEmbedding(embedding) {
         validation.errors.push('Embedding contains NaN or infinite values');
     }
 
-    // Check if vector is all zeros (suspicious)
+    // All zeros
     const isAllZeros = embedding.every(val => val === 0);
     if (isAllZeros) {
         validation.warnings.push('Embedding vector is all zeros');
     }
 
-    // Check magnitude (should be close to 1 for normalized vectors)
+    // Magnitude sanity
     const magnitude = Math.sqrt(
         embedding.reduce((sum, val) => sum + val * val, 0)
     );
@@ -286,11 +243,7 @@ function validateEmbedding(embedding) {
     return validation;
 }
 
-/**
- * Get cache statistics
- * 
- * @returns {Object} Cache statistics
- */
+// Cache stats
 function getCacheStats() {
     return {
         size: embeddingCache.size,
@@ -301,41 +254,26 @@ function getCacheStats() {
     };
 }
 
-/**
- * Clear embedding cache
- */
+// Clear cache
 function clearCache() {
     embeddingCache.clear();
-    console.log('✓ Embedding cache cleared');
+    console.log('Embedding cache cleared');
 }
 
-/**
- * Generate query embedding optimized for search
- * Uses the same model but with optional query-specific preprocessing
- * 
- * @param {string} query - Search query
- * @returns {Promise<Array<number>>} Query embedding
- */
+// Generate query embedding
 async function generateQueryEmbedding(query) {
     if (!query || typeof query !== 'string') {
         throw new Error('Invalid query for embedding generation');
     }
 
-    // Preprocess query (lowercase, trim)
+    // Simple preprocess
     const processedQuery = query.toLowerCase().trim();
 
     // Generate embedding with caching enabled
     return await generateEmbedding(processedQuery, { useCache: true });
 }
 
-/**
- * Batch process with error handling and partial results
- * Continues processing even if some texts fail
- * 
- * @param {Array<string>} texts - Texts to embed
- * @param {Function} progressCallback - Progress callback
- * @returns {Promise<Object>} Results with embeddings and errors
- */
+// Batch with partial failure reporting
 async function generateBatchWithErrorHandling(texts, progressCallback = null) {
     if (!Array.isArray(texts) || texts.length === 0) {
         throw new Error('Invalid texts array');
@@ -359,7 +297,7 @@ async function generateBatchWithErrorHandling(texts, progressCallback = null) {
             }
 
         } catch (error) {
-            console.error(`Failed to generate embedding for text ${i}:`, error.message);
+            console.error(`Failed embedding for index ${i}:`, error.message);
             results.embeddings.push(null);
             results.errors.push({ index: i, error: error.message });
             results.failureCount++;
@@ -369,16 +307,11 @@ async function generateBatchWithErrorHandling(texts, progressCallback = null) {
     return results;
 }
 
-/**
- * Test embedding generation with sample text
- * Useful for validating API connection and model configuration
- * 
- * @returns {Promise<Object>} Test results
- */
+// Quick self-test
 async function testEmbeddingGeneration() {
     const testText = "Financial revenue increased by 15% in Q4 2024.";
 
-    console.log('Testing embedding generation...');
+    console.log('Embedding self-test...');
     const startTime = Date.now();
 
     try {

@@ -1,7 +1,4 @@
-/**
- * Text Preprocessing Module
- * Handles text cleaning, normalization, tokenization, and stopword removal
- */
+// Text preprocessing: clean, tokenize, stopwords, simple entities
 
 const natural = require('natural');
 const tokenizer = new natural.WordTokenizer();

@@ -1,7 +1,4 @@
-/**
- * Intelligent Text Chunking Module
- * Splits text into overlapping chunks while preserving sentence boundaries
- */
+// Chunking: split text into overlapping chunks, preserving sentences when possible
 
 const { encoding_for_model } = require('tiktoken');
 const { tokenizeSentences } = require('./preprocess');

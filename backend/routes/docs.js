@@ -1,7 +1,4 @@
-/**
- * Document Management Routes
- * CRUD operations for uploaded documents and chunks
- */
+// Document routes: list, chunks, delete, stats
 
 const express = require('express');
 const router = express.Router();
@@ -13,13 +10,7 @@ const {
     getIndexStats
 } = require('../db/pinecone');
 
-/**
- * GET /api/docs
- * List all uploaded documents
- * 
- * Query params:
- * ?limit=10&offset=0&sortBy=upload_date&order=desc
- */
+// GET /api/docs — list documents
 router.get('/', async (req, res) => {
     try {
         const {
@@ -29,13 +20,13 @@ router.get('/', async (req, res) => {
             order = 'desc'
         } = req.query;
 
-        console.log(`\n📚 Fetching documents (limit: ${limit}, offset: ${offset})`);
+    console.log(`Documents list (limit=${limit}, offset=${offset})`);
 
         const documents = await getAllDocuments();
 
-        console.log(`✓ Retrieved ${documents.length} documents`);
+    console.log(`Documents: ${documents.length}`);
 
-        // Format documents for frontend compatibility
+    // Normalize fields
         const documentsWithStats = documents.map((doc) => {
             return {
                 document_id: doc.document_id,
@@ -71,16 +62,13 @@ router.get('/', async (req, res) => {
     }
 });
 
-/**
- * GET /api/docs/:documentId
- * Get single document with all chunks
- */
+// GET /api/docs/:documentId — single document
 router.get('/:documentId', async (req, res) => {
     try {
         const { documentId } = req.params;
         const { includeChunks = 'true' } = req.query;
 
-        console.log(`\n📄 Fetching document: ${documentId}`);
+    console.log(`Document: ${documentId}`);
 
         const document = await getDocumentById(documentId);
 
@@ -94,7 +82,7 @@ router.get('/:documentId', async (req, res) => {
         let chunks = [];
         if (includeChunks === 'true') {
             chunks = await getDocumentChunks(documentId);
-            console.log(`✓ Retrieved ${chunks.length} chunks`);
+            console.log(`Chunks: ${chunks.length}`);
         }
 
         const stats = await getDocumentStats(documentId);
@@ -118,19 +106,13 @@ router.get('/:documentId', async (req, res) => {
     }
 });
 
-/**
- * GET /api/docs/:documentId/chunks
- * Get all chunks for a document
- * 
- * Query params:
- * ?limit=50&offset=0
- */
+// GET /api/docs/:documentId/chunks — document chunks
 router.get('/:documentId/chunks', async (req, res) => {
     try {
         const { documentId } = req.params;
         const { limit = 50, offset = 0 } = req.query;
 
-        console.log(`\n📄 Fetching chunks for document: ${documentId}`);
+    console.log(`Document chunks: ${documentId}`);
 
         const chunks = await getDocumentChunks(documentId, {
             limit: parseInt(limit),
@@ -164,15 +146,12 @@ router.get('/:documentId/chunks', async (req, res) => {
     }
 });
 
-/**
- * GET /api/docs/chunk/:chunkId
- * Get single chunk by ID
- */
+// GET /api/docs/chunk/:chunkId — chunk by id
 router.get('/chunk/:chunkId', async (req, res) => {
     try {
         const { chunkId } = req.params;
 
-        console.log(`\n📄 Fetching chunk: ${chunkId}`);
+    console.log(`Chunk: ${chunkId}`);
 
         const chunk = await getChunkById(chunkId);
 
@@ -198,15 +177,12 @@ router.get('/chunk/:chunkId', async (req, res) => {
     }
 });
 
-/**
- * DELETE /api/docs/:documentId
- * Delete document and all associated chunks
- */
+// DELETE /api/docs/:documentId — delete document
 router.delete('/:documentId', async (req, res) => {
     try {
         const { documentId } = req.params;
 
-        console.log(`\n🗑️ Deleting document: ${documentId}`);
+    console.log(`Deleting document: ${documentId}`);
 
         const result = await deleteDocument(documentId);
 
@@ -217,7 +193,7 @@ router.delete('/:documentId', async (req, res) => {
             });
         }
 
-        console.log(`✓ Deleted document and ${result.chunksDeleted} chunks`);
+    console.log(`Deleted document and ${result.chunksDeleted} chunks`);
 
         res.json({
             success: true,
@@ -236,15 +212,12 @@ router.delete('/:documentId', async (req, res) => {
     }
 });
 
-/**
- * DELETE /api/docs/chunk/:chunkId
- * Delete single chunk
- */
+// DELETE /api/docs/chunk/:chunkId — delete chunk
 router.delete('/chunk/:chunkId', async (req, res) => {
     try {
         const { chunkId } = req.params;
 
-        console.log(`\n🗑️ Deleting chunk: ${chunkId}`);
+    console.log(`Deleting chunk: ${chunkId}`);
 
         const result = await deleteChunk(chunkId);
 
@@ -271,15 +244,7 @@ router.delete('/chunk/:chunkId', async (req, res) => {
     }
 });
 
-/**
- * PATCH /api/docs/:documentId
- * Update document metadata
- * 
- * Request body:
- * {
- *   metadata: object
- * }
- */
+// PATCH /api/docs/:documentId — update metadata
 router.patch('/:documentId', async (req, res) => {
     try {
         const { documentId } = req.params;
@@ -292,7 +257,7 @@ router.patch('/:documentId', async (req, res) => {
             });
         }
 
-        console.log(`\n✏️ Updating document metadata: ${documentId}`);
+    console.log(`Update metadata: ${documentId}`);
 
         const result = await updateDocumentMetadata(documentId, metadata);
 
@@ -319,15 +284,12 @@ router.patch('/:documentId', async (req, res) => {
     }
 });
 
-/**
- * GET /api/docs/:documentId/stats
- * Get detailed statistics for a document
- */
+// GET /api/docs/:documentId/stats — stats
 router.get('/:documentId/stats', async (req, res) => {
     try {
         const { documentId } = req.params;
 
-        console.log(`\n📊 Fetching stats for document: ${documentId}`);
+    console.log(`Stats for document: ${documentId}`);
 
         const stats = await getDocumentStats(documentId);
 
@@ -354,13 +316,10 @@ router.get('/:documentId/stats', async (req, res) => {
     }
 });
 
-/**
- * GET /api/docs/stats/overview
- * Get system-wide statistics
- */
+// GET /api/docs/stats/overview — system stats
 router.get('/stats/overview', async (req, res) => {
     try {
-        console.log('\n📊 Fetching system overview...');
+        console.log('System overview');
 
         const { getSystemStats } = require('../db/pgvector');
         const stats = await getSystemStats();

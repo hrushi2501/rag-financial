@@ -1,7 +1,4 @@
-/**
- * Express Server
- * Main application server with all routes and middleware
- */
+// Simple Express server wiring routes, middleware, and health checks
 
 const express = require('express');
 const cors = require('cors');
@@ -21,11 +18,11 @@ const docsRouter = require('./routes/docs');
 const { initializePinecone, healthCheck } = require('./db/pinecone');
 const { testEmbeddingGeneration } = require('./nlp/embeddings');
 
-// Initialize Express app
+// App setup
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Create required directories
+// Ensure uploads dir exists
 const uploadsDir = path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
@@ -53,7 +50,7 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Request logging
+// Logging
 if (process.env.NODE_ENV !== 'production') {
     app.use(morgan('dev'));
 } else {
@@ -70,22 +67,22 @@ if (process.env.NODE_ENV !== 'production') {
     app.use(morgan('combined', { stream: accessLogStream }));
 }
 
-// Static files (frontend)
+// Static frontend
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-// API Routes
+// API routes
 app.use('/api/upload', uploadRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/docs', docsRouter);
 
-// Health check endpoint
+// Health check
 app.get('/api/health', async (req, res) => {
     try {
         const dbHealth = await healthCheck();
         const embeddingHealth = await testEmbeddingGeneration();
 
-        const status = dbHealth.connected && embeddingHealth.success ? 'healthy' : 'degraded';
+    const status = dbHealth.connected && embeddingHealth.success ? 'healthy' : 'degraded';
         const statusCode = status === 'healthy' ? 200 : 503;
 
         res.status(statusCode).json({
@@ -115,7 +112,7 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-// API info endpoint
+// API info
 app.get('/api', (req, res) => {
     res.json({
         name: 'Financial RAG System API',
@@ -154,12 +151,12 @@ app.get('/api', (req, res) => {
     });
 });
 
-// Serve frontend for all other routes
+// Fallback to SPA index
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
-// Error handling middleware
+// Error handler
 app.use((err, req, res, next) => {
     console.error('Error:', err);
 
@@ -170,7 +167,7 @@ app.use((err, req, res, next) => {
     });
 });
 
-// 404 handler
+// 404
 app.use((req, res) => {
     res.status(404).json({
         success: false,
@@ -179,15 +176,15 @@ app.use((req, res) => {
     });
 });
 
-// Global server instance for graceful shutdown
+// Track server for shutdown
 let serverInstance = null;
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
-    console.log('\n⏸️ SIGTERM received, shutting down gracefully...');
+    console.log('SIGTERM received, shutting down...');
     if (serverInstance) {
         serverInstance.close(() => {
-            console.log('✓ Server closed');
+            console.log('Server closed');
             process.exit(0);
         });
     } else {
@@ -196,10 +193,10 @@ process.on('SIGTERM', () => {
 });
 
 process.on('SIGINT', () => {
-    console.log('\n⏸️ SIGINT received, shutting down gracefully...');
+    console.log('SIGINT received, shutting down...');
     if (serverInstance) {
         serverInstance.close(() => {
-            console.log('✓ Server closed');
+            console.log('Server closed');
             process.exit(0);
         });
     } else {
@@ -207,44 +204,36 @@ process.on('SIGINT', () => {
     }
 });
 
-// Initialize and start server
+// Boot
 async function startServer() {
     try {
-        console.log('\n🚀 Starting Financial RAG System...\n');
+    console.log('Starting Financial RAG System...');
 
         // Initialize Pinecone
-        console.log('📊 Initializing Pinecone...');
+    console.log('Initializing Pinecone...');
         await initializePinecone();
-        console.log('✓ Pinecone initialized\n');
+    console.log('Pinecone ready');
 
         // Test embedding generation
-        console.log('🧠 Testing embedding generation...');
+    console.log('Testing embeddings...');
         const embeddingTest = await testEmbeddingGeneration();
         if (embeddingTest.success) {
-            console.log('✓ Embedding generation working');
-            console.log(`  Model: ${process.env.EMBEDDING_MODEL || 'text-embedding-004'}`);
-            console.log(`  Dimensions: ${embeddingTest.dimensions}`);
-            console.log(`  Test duration: ${embeddingTest.duration}\n`);
+            console.log(`Embeddings OK — model=${process.env.EMBEDDING_MODEL || 'text-embedding-004'}, dim=${embeddingTest.dimensions}, duration=${embeddingTest.duration}`);
         } else {
-            console.error('⚠️ Embedding generation test failed:', embeddingTest.error);
-            console.log('Server will start but embeddings may not work\n');
+            console.warn('Embedding test failed:', embeddingTest.error, '(server will still start)');
         }
 
         // Start server
         serverInstance = app.listen(PORT, () => {
-            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-            console.log(`✓ Server running on port ${PORT}`);
-            console.log(`✓ Frontend: http://localhost:${PORT}`);
-            console.log(`✓ API: http://localhost:${PORT}/api`);
-            console.log(`✓ Health: http://localhost:${PORT}/api/health`);
-            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-            console.log('Ready to accept requests! 🎯\n');
+            console.log(`Server listening on http://localhost:${PORT}`);
+            console.log(`API:     http://localhost:${PORT}/api`);
+            console.log(`Health:  http://localhost:${PORT}/api/health`);
         });
 
         return serverInstance;
 
     } catch (error) {
-        console.error('\n Failed to start server:', error);
+    console.error('Failed to start server:', error);
         process.exit(1);
     }
 }

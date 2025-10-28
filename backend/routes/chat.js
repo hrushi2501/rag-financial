@@ -1,7 +1,4 @@
-/**
- * Chat Routes Module
- * RAG-based chat completion with context retrieval and conversation history
- */
+// Chat endpoints: RAG retrieval + lightweight history
 
 const express = require('express');
 const router = express.Router();
@@ -15,22 +12,10 @@ require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const chatModel = process.env.CHAT_MODEL || 'gemini-2.5-flash';
 
-// In-memory conversation history (consider Redis for production)
+// In-memory history (swap to Redis for prod)
 const conversationHistory = new Map();
 
-/**
- * POST /api/chat
- * Chat completion with RAG context
- * 
- * Request body:
- * {
- *   message: string,
- *   conversationId: string (optional),
- *   topK: number (optional, default: 5),
- *   includeContext: boolean (optional, default: true),
- *   temperature: number (optional, default: 0.7)
- * }
- */
+// POST /api/chat — non-streaming
 router.post('/', async (req, res) => {
     try {
         const {
@@ -50,23 +35,20 @@ router.post('/', async (req, res) => {
             });
         }
 
-        console.log(`\n💬 Processing chat message: "${message}"`);
-        console.log(`Conversation ID: ${conversationId || 'new'}`);
+    console.log(`Chat: "${message}" (conv=${conversationId || 'new'})`);
 
         const startTime = Date.now();
         let contextChunks = [];
 
-        // Retrieve context from vector database if enabled
+        // Retrieve context
         if (includeContext) {
-            console.log('Retrieving context from documents...');
+            console.log('Retrieving context...');
             const queryEmbedding = await generateQueryEmbedding(message);
-
-            // Lowered threshold to 0.3 to improve recall; precision is handled by prompt grounding
+            // Lower threshold (0.3) for better recall
             contextChunks = await searchSimilarVectors(queryEmbedding, topK, 0.3, filters);
-
-            console.log(`✓ Retrieved ${contextChunks.length} context chunks`);
+            console.log(`Context chunks: ${contextChunks.length}`);
         } else {
-            console.log('⚠ Context retrieval disabled for this message');
+            console.log('Context disabled');
         }
 
         // Build conversation history
@@ -76,12 +58,12 @@ router.post('/', async (req, res) => {
             console.log(`Using conversation history (${conversationContext.length} messages)`);
         }
 
-        // Construct prompt with context
+    // Prompt
         const systemPrompt = buildSystemPrompt(contextChunks);
         const userPrompt = message;
 
         // Generate response using Gemini with retry logic
-        console.log('Generating AI response...');
+    console.log('Generating response...');
         const model = genAI.getGenerativeModel({
             model: chatModel,
             generationConfig: {
@@ -90,7 +72,7 @@ router.post('/', async (req, res) => {
             }
         });
 
-        // Build chat history for Gemini
+        // Gemini history
         const chatHistory = conversationContext.map(msg => ({
             role: msg.role === 'user' ? 'user' : 'model',
             parts: [{ text: msg.content }]
@@ -104,12 +86,12 @@ router.post('/', async (req, res) => {
             },
         });
 
-        // Add system context to the message
+        // Add context
         const messageWithContext = includeContext && contextChunks.length > 0
             ? `${systemPrompt}\n\nUser question: ${userPrompt}`
             : userPrompt;
 
-        // Retry logic for 503 errors
+        // Retry on 503/429
         let result;
         let response;
         let retries = 3;
@@ -121,8 +103,8 @@ router.post('/', async (req, res) => {
                 break; // Success, exit retry loop
             } catch (error) {
                 retries--;
-                if (error.status === 503 && retries > 0) {
-                    console.log(`⚠ Model overloaded, retrying... (${retries} attempts left)`);
+                if ((error.status === 503 || error.status === 429) && retries > 0) {
+                    console.log(`Retrying... (${retries} left)`);
                     await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
                 } else {
                     throw error; // Re-throw if not 503 or out of retries
@@ -131,7 +113,7 @@ router.post('/', async (req, res) => {
         }
 
         const duration = Date.now() - startTime;
-        console.log(`✓ Response generated in ${duration}ms`);
+        console.log(`Done in ${duration}ms`);
 
         // Update conversation history
         const newConversationId = conversationId || generateConversationId();
@@ -148,7 +130,7 @@ router.post('/', async (req, res) => {
             history.splice(0, history.length - 10);
         }
 
-        // Prepare context citations
+        // Citations
         const citations = contextChunks.map((chunk, index) => ({
             index: index + 1,
             documentName: chunk.filename || 'Unknown',
@@ -174,7 +156,7 @@ router.post('/', async (req, res) => {
     } catch (error) {
         console.error('Chat error:', error);
         
-            // Handle specific error types
+            // Classify error
             const isOverloaded = error.status === 503;
             const isRateLimited = error.status === 429;
         
@@ -191,12 +173,7 @@ router.post('/', async (req, res) => {
     }
 });
 
-/**
- * POST /api/chat/stream
- * Streaming chat completion with RAG context
- * 
- * Request body: Same as /api/chat
- */
+// POST /api/chat/stream — SSE streaming
 router.post('/stream', async (req, res) => {
     try {
         const {
@@ -215,18 +192,18 @@ router.post('/stream', async (req, res) => {
             });
         }
 
-        // Set headers for SSE
+    // SSE headers
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
 
-        console.log(`\n💬 Processing streaming chat: "${message}"`);
+    console.log(`Streaming chat: "${message}"`);
 
         // Retrieve context
         let contextChunks = [];
         if (includeContext) {
             const queryEmbedding = await generateQueryEmbedding(message);
-            // Lowered threshold to 0.3 to improve recall for streaming as well
+            // Threshold 0.3 for recall
             contextChunks = await searchSimilarVectors(queryEmbedding, topK, 0.3, filters);
         }
 
@@ -241,13 +218,13 @@ router.post('/stream', async (req, res) => {
             })}\n\n`);
         }
 
-        // Build conversation context
+        // Conversation context
         let conversationContext = [];
         if (conversationId && conversationHistory.has(conversationId)) {
             conversationContext = conversationHistory.get(conversationId);
         }
 
-        // Generate streaming response
+    // Stream response
         const systemPrompt = buildSystemPrompt(contextChunks);
         const model = genAI.getGenerativeModel({ model: chatModel });
 
@@ -277,7 +254,7 @@ router.post('/stream', async (req, res) => {
             })}\n\n`);
         }
 
-        // Send completion event
+        // Done
         res.write(`data: ${JSON.stringify({
             type: 'done',
             fullResponse
@@ -285,7 +262,7 @@ router.post('/stream', async (req, res) => {
 
         res.end();
 
-        // Update conversation history
+        // Save history
         const newConversationId = conversationId || generateConversationId();
         if (!conversationHistory.has(newConversationId)) {
             conversationHistory.set(newConversationId, []);
@@ -309,10 +286,7 @@ router.post('/stream', async (req, res) => {
     }
 });
 
-/**
- * GET /api/chat/history/:conversationId
- * Get conversation history
- */
+// GET /api/chat/history/:conversationId — fetch history
 router.get('/history/:conversationId', (req, res) => {
     try {
         const { conversationId } = req.params;
@@ -343,17 +317,14 @@ router.get('/history/:conversationId', (req, res) => {
     }
 });
 
-/**
- * DELETE /api/chat/history/:conversationId
- * Clear conversation history
- */
+// DELETE /api/chat/history/:conversationId — clear history
 router.delete('/history/:conversationId', (req, res) => {
     try {
         const { conversationId } = req.params;
 
         if (conversationHistory.has(conversationId)) {
             conversationHistory.delete(conversationId);
-            console.log(`✓ Cleared conversation: ${conversationId}`);
+            console.log(`Cleared conversation: ${conversationId}`);
         }
 
         res.json({
@@ -371,16 +342,7 @@ router.delete('/history/:conversationId', (req, res) => {
     }
 });
 
-/**
- * POST /api/chat/summarize
- * Summarize a document or conversation
- * 
- * Request body:
- * {
- *   text: string,
- *   maxLength: number (optional, default: 200)
- * }
- */
+// POST /api/chat/summarize — quick summary
 router.post('/summarize', async (req, res) => {
     try {
         const { text, maxLength = 200 } = req.body;
@@ -392,7 +354,7 @@ router.post('/summarize', async (req, res) => {
             });
         }
 
-        console.log(`\n📝 Generating summary (max ${maxLength} words)...`);
+    console.log(`Summarize (max ${maxLength} words)`);
 
         const model = genAI.getGenerativeModel({ model: chatModel });
 
@@ -418,9 +380,7 @@ router.post('/summarize', async (req, res) => {
     }
 });
 
-/**
- * Build system prompt with context chunks
- */
+// Build system prompt from context
 function buildSystemPrompt(contextChunks) {
     if (!contextChunks || contextChunks.length === 0) {
         return `You are a helpful financial document assistant. Answer questions accurately and concisely.`;
@@ -443,16 +403,12 @@ Instructions:
 - Keep answers concise but complete`;
 }
 
-/**
- * Generate unique conversation ID
- */
+// ID helper
 function generateConversationId() {
     return `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
-/**
- * Clean up old conversations (run periodically)
- */
+// Cleanup old conversations hourly
 function cleanupOldConversations() {
     const maxAge = 24 * 60 * 60 * 1000; // 24 hours
     const now = Date.now();
@@ -465,12 +421,12 @@ function cleanupOldConversations() {
 
         if (age > maxAge) {
             conversationHistory.delete(id);
-            console.log(`Cleaned up old conversation: ${id}`);
+            console.log(`Cleaned old conversation: ${id}`);
         }
     }
 }
 
-// Run cleanup every hour
+// Hourly cleanup
 setInterval(cleanupOldConversations, 60 * 60 * 1000);
 
 module.exports = router;

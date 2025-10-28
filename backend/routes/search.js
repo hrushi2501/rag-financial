@@ -39,22 +39,22 @@ router.post('/', async (req, res) => {
             });
         }
 
-        console.log(`\n🔍 Processing search query: "${query}"`);
+    console.log(`\nProcessing search query: "${query}"`);
         console.log(`Parameters: topK=${topK}, threshold=${threshold}`);
 
         const startTime = Date.now();
 
         // Generate query embedding
-        console.log('Generating query embedding...');
-        const queryEmbedding = await generateQueryEmbedding(query);
-        console.log(`✓ Query embedding generated (${queryEmbedding.length} dimensions)`);
+    console.log('Generating query embedding...');
+    const queryEmbedding = await generateQueryEmbedding(query);
+    console.log(`Query embedding generated (${queryEmbedding.length} dimensions)`);
 
         // Perform vector search
-        console.log('Searching vector database...');
+    console.log('Searching vector database...');
         const results = await searchSimilarVectors(queryEmbedding, topK, threshold, filters);
 
-        const duration = Date.now() - startTime;
-        console.log(`✓ Found ${results.length} results in ${duration}ms`);
+    const duration = Date.now() - startTime;
+    console.log(`Found ${results.length} results in ${duration}ms`);
 
         // Format results for response
         const formattedResults = results.map((result, index) => ({
@@ -123,7 +123,7 @@ router.post('/hybrid', async (req, res) => {
             });
         }
 
-        console.log(`\n🔍 Processing hybrid search: "${query}"`);
+    console.log(`\nProcessing hybrid search: "${query}"`);
         console.log(`Weights: vector=${vectorWeight}, keyword=${keywordWeight}`);
 
         const startTime = Date.now();
@@ -139,8 +139,8 @@ router.post('/hybrid', async (req, res) => {
             filters
         });
 
-        const duration = Date.now() - startTime;
-        console.log(`✓ Found ${results.length} hybrid results in ${duration}ms`);
+    const duration = Date.now() - startTime;
+    console.log(`Found ${results.length} hybrid results in ${duration}ms`);
 
         // Format results
         const formattedResults = results.map((result, index) => ({
@@ -197,7 +197,7 @@ router.post('/similar', async (req, res) => {
             });
         }
 
-        console.log(`\n🔍 Finding similar chunks to: ${chunkId}`);
+    console.log(`\nFinding similar chunks to: ${chunkId}`);
 
         const startTime = Date.now();
 
@@ -226,8 +226,8 @@ router.post('/similar', async (req, res) => {
         // Remove the source chunk from results
         const similarChunks = results.filter(r => r.chunk_id !== chunkId).slice(0, topK);
 
-        const duration = Date.now() - startTime;
-        console.log(`✓ Found ${similarChunks.length} similar chunks in ${duration}ms`);
+    const duration = Date.now() - startTime;
+    console.log(`Found ${similarChunks.length} similar chunks in ${duration}ms`);
 
         res.json({
             success: true,
@@ -278,7 +278,7 @@ router.post('/document', async (req, res) => {
             });
         }
 
-        console.log(`\n🔍 Searching within document: ${documentId}`);
+    console.log(`\nSearching within document: ${documentId}`);
 
         const startTime = Date.now();
 

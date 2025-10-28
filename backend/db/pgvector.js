@@ -17,7 +17,7 @@ const pool = new Pool({
 
 // Test connection on startup
 pool.on('connect', () => {
-    console.log('✓ Connected to PostgreSQL database');
+    console.log('Connected to PostgreSQL database');
 });
 
 pool.on('error', (err) => {
@@ -35,8 +35,8 @@ async function createVectorTable() {
         await client.query('BEGIN');
 
         // Enable pgvector extension
-        await client.query('CREATE EXTENSION IF NOT EXISTS vector');
-        console.log('✓ pgvector extension enabled');
+    await client.query('CREATE EXTENSION IF NOT EXISTS vector');
+    console.log('pgvector extension enabled');
 
         // Create documents table
         await client.query(`
@@ -50,7 +50,7 @@ async function createVectorTable() {
         metadata JSONB DEFAULT '{}'::jsonb
       )
     `);
-        console.log('✓ Documents table created');
+    console.log('Documents table created');
 
         // Create vectors table with pgvector column
         const vectorDimensions = process.env.VECTOR_DIMENSIONS || 768;
@@ -68,7 +68,7 @@ async function createVectorTable() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-        console.log('✓ Vectors table created');
+    console.log('Vectors table created');
 
         // Create indexes for better search performance
         await client.query(`
@@ -81,7 +81,7 @@ async function createVectorTable() {
       ON vectors USING ivfflat (embedding vector_cosine_ops)
       WITH (lists = 100)
     `);
-        console.log('✓ Indexes created');
+    console.log('Indexes created');
 
         // Create conversations table for chat history
         await client.query(`
@@ -93,10 +93,10 @@ async function createVectorTable() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-        console.log('✓ Conversations table created');
+    console.log('Conversations table created');
 
-        await client.query('COMMIT');
-        console.log('✓ Database schema initialized successfully');
+    await client.query('COMMIT');
+    console.log('Database schema initialized successfully');
 
     } catch (error) {
         await client.query('ROLLBACK');
@@ -185,8 +185,8 @@ async function insertVectors(documentId, chunks, embeddings) {
             [chunks.length, documentId]
         );
 
-        await client.query('COMMIT');
-        console.log(`✓ Inserted ${chunks.length} vectors for document ${documentId}`);
+    await client.query('COMMIT');
+    console.log(`Inserted ${chunks.length} vectors for document ${documentId}`);
 
         return chunks.length;
 
@@ -320,7 +320,7 @@ async function deleteDocument(documentId) {
         await client.query('COMMIT');
 
         if (result.rowCount > 0) {
-            console.log(`✓ Deleted document ${documentId} and associated vectors`);
+            console.log(`Deleted document ${documentId} and associated vectors`);
             return true;
         }
 
@@ -390,7 +390,7 @@ async function getConversations(limit = 10) {
  */
 async function closePool() {
     await pool.end();
-    console.log('✓ Database connection pool closed');
+    console.log('Database connection pool closed');
 }
 
 /**

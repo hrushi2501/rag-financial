@@ -1,18 +1,13 @@
-/**
- * Pinecone Vector Database Interface
- * Handles all vector operations using Pinecone cloud service
- */
+// Pinecone adapter: init, upsert, query, and simple helpers
 
 const { Pinecone } = require('@pinecone-database/pinecone');
 require('dotenv').config();
 
-// Initialize Pinecone client
+// Client/Index
 let pinecone = null;
 let index = null;
 
-/**
- * Initialize Pinecone connection
- */
+// Connect once
 async function initializePinecone() {
     try {
         if (!process.env.PINECONE_API_KEY) {
@@ -25,36 +20,32 @@ async function initializePinecone() {
 
         const indexName = process.env.PINECONE_INDEX_NAME || 'financial-rag';
         
-        console.log(`🔗 Connecting to Pinecone index: ${indexName}`);
+    console.log(`Connecting to Pinecone index: ${indexName}`);
         
         // Get existing index or create instructions
         try {
             index = pinecone.index(indexName);
-            console.log(`✅ Connected to Pinecone index: ${indexName}`);
+            console.log(`Connected to index: ${indexName}`);
         } catch (error) {
-            console.log(`⚠️  Index '${indexName}' not found. You need to create it in Pinecone console.`);
-            console.log(`   Visit: https://app.pinecone.io/`);
-            console.log(`   Settings: dimension=768, metric=cosine`);
+            console.log(`Index '${indexName}' not found. Create it in Pinecone (dimension=768, metric=cosine).`);
             throw error;
         }
 
         return { success: true };
     } catch (error) {
-        console.error('❌ Pinecone initialization failed:', error.message);
+    console.error('Pinecone initialization failed:', error.message);
         throw error;
     }
 }
 
-/**
- * Health check for Pinecone connection
- */
+// Health
 async function healthCheck() {
     try {
         if (!index) {
             await initializePinecone();
         }
         
-        // Get index stats to verify connection
+    // Stats verify connection
         const stats = await index.describeIndexStats();
         
         return {
@@ -66,7 +57,7 @@ async function healthCheck() {
             namespaces: stats.namespaces || {}
         };
     } catch (error) {
-        console.error('Health check failed:', error.message);
+        console.error('Pinecone health check failed:', error.message);
         return {
             status: 'unhealthy',
             service: 'pinecone',
@@ -75,26 +66,22 @@ async function healthCheck() {
     }
 }
 
-/**
- * Insert document metadata (stored in Pinecone metadata)
- */
+// Insert document metadata (we store metadata per-vector)
 async function insertDocument(filename, fileType, metadata = {}) {
     try {
         const documentId = `doc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
-        console.log(`📄 Document registered: ${documentId}`);
+    console.log(`Document registered: ${documentId}`);
         
         // Return just the ID string
         return documentId;
     } catch (error) {
-        console.error('Error inserting document:', error);
+    console.error('Error inserting document:', error);
         throw error;
     }
 }
 
-/**
- * Insert vectors into Pinecone with metadata
- */
+// Upsert vectors with metadata
 async function insertVectors(documentId, filename, chunks, embeddings) {
     try {
         if (!index) {
@@ -113,7 +100,7 @@ async function insertVectors(documentId, filename, chunks, embeddings) {
             throw new Error(`Chunk count (${chunks.length}) does not match embedding count (${embeddings.length})`);
         }
 
-        console.log(`📤 Inserting ${chunks.length} vectors into Pinecone...`);
+    console.log(`Upserting ${chunks.length} vectors...`);
 
         // Prepare vectors for Pinecone
         const vectors = chunks.map((chunk, idx) => {
@@ -139,34 +126,31 @@ async function insertVectors(documentId, filename, chunks, embeddings) {
             };
         });
 
-        // Upsert vectors in batches of 100 (Pinecone limit)
+        // Upsert in batches of 100
         const batchSize = 100;
         for (let i = 0; i < vectors.length; i += batchSize) {
             const batch = vectors.slice(i, i + batchSize);
             await index.upsert(batch);
-            console.log(`   ✅ Uploaded batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(vectors.length / batchSize)}`);
+            console.log(`Batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(vectors.length / batchSize)} uploaded`);
         }
-
-        console.log(`✅ Successfully inserted ${vectors.length} vectors`);
+        console.log(`Inserted ${vectors.length} vectors`);
         
         // Return just the count (for compatibility with upload.js)
         return vectors.length;
     } catch (error) {
-        console.error('Error inserting vectors:', error);
+    console.error('Error inserting vectors:', error);
         throw error;
     }
 }
 
-/**
- * Search for similar vectors using cosine similarity
- */
+// Vector search (cosine)
 async function searchSimilarVectors(queryEmbedding, topK = 10, threshold = 0.75, filter = {}) {
     try {
         if (!index) {
             await initializePinecone();
         }
 
-        console.log(`🔍 Searching Pinecone for top ${topK} similar vectors...`);
+    console.log(`Searching top ${topK} vectors...`);
 
         const queryRequest = {
             vector: queryEmbedding,
@@ -182,7 +166,7 @@ async function searchSimilarVectors(queryEmbedding, topK = 10, threshold = 0.75,
 
         const queryResponse = await index.query(queryRequest);
 
-        // Filter by similarity threshold
+        // Filter by threshold
         const results = queryResponse.matches
             .filter(match => match.score >= threshold)
             .map(match => ({
@@ -193,37 +177,33 @@ async function searchSimilarVectors(queryEmbedding, topK = 10, threshold = 0.75,
                 documentId: match.metadata?.documentId || '',
                 filename: match.metadata?.filename || 'Unknown'
             }));
-
-        console.log(`✅ Found ${results.length} matches above threshold ${threshold}`);
+        console.log(`Matches above ${threshold}: ${results.length}`);
 
         return results;
     } catch (error) {
-        console.error('Error searching vectors:', error);
+    console.error('Error searching vectors:', error);
         throw error;
     }
 }
 
-/**
- * Get all documents (retrieve unique document IDs from vectors)
- */
+// List unique documents by sampling vectors
 async function getAllDocuments() {
     try {
         if (!index) {
             await initializePinecone();
         }
 
-        console.log('📊 Fetching all documents from Pinecone...');
+    console.log('Listing documents...');
 
         // Get index stats
         const stats = await index.describeIndexStats();
-        console.log(`Total vectors in index: ${stats.totalRecordCount || 0}`);
+    console.log(`Total vectors: ${stats.totalRecordCount || 0}`);
 
         if (!stats.totalRecordCount || stats.totalRecordCount === 0) {
             return [];
         }
 
-        // Query with dummy vector to get all records (limited approach)
-        // Use a broad query to sample vectors and extract unique document IDs
+        // Broad query to sample vectors and extract unique document IDs
         const queryResponse = await index.query({
             vector: new Array(768).fill(0.1), // Dummy vector
             topK: 10000, // Max Pinecone allows
@@ -252,25 +232,23 @@ async function getAllDocuments() {
         });
 
         const documents = Array.from(documentMap.values());
-        console.log(`✓ Found ${documents.length} unique documents`);
+    console.log(`Documents found: ${documents.length}`);
 
         return documents;
     } catch (error) {
-        console.error('Error getting documents:', error);
+    console.error('Error getting documents:', error);
         return []; // Return empty array on error
     }
 }
 
-/**
- * Get document chunks by document ID
- */
+// Get chunks for a document
 async function getDocumentChunks(documentId) {
     try {
         if (!index) {
             await initializePinecone();
         }
 
-        // Query with filter for specific document
+        // Filter by documentId
         const queryResponse = await index.query({
             vector: new Array(768).fill(0), // Dummy vector
             topK: 10000, // Max results
@@ -289,39 +267,34 @@ async function getDocumentChunks(documentId) {
 
         return chunks;
     } catch (error) {
-        console.error('Error getting document chunks:', error);
+    console.error('Error getting document chunks:', error);
         throw error;
     }
 }
 
-/**
- * Delete document and all its vectors
- */
+// Delete a document (all vectors)
 async function deleteDocument(documentId) {
     try {
         if (!index) {
             await initializePinecone();
         }
 
-        console.log(`🗑️  Deleting document: ${documentId}`);
+    console.log(`Deleting document: ${documentId}`);
 
         // Delete all vectors with matching documentId
         await index.deleteMany({
             documentId: { $eq: documentId }
         });
-
-        console.log(`✅ Deleted document: ${documentId}`);
+        console.log(`Deleted document: ${documentId}`);
 
         return { success: true, documentId };
     } catch (error) {
-        console.error('Error deleting document:', error);
+    console.error('Error deleting document:', error);
         throw error;
     }
 }
 
-/**
- * Delete specific chunk by ID
- */
+// Delete a chunk by ID
 async function deleteChunk(chunkId) {
     try {
         if (!index) {
@@ -337,9 +310,7 @@ async function deleteChunk(chunkId) {
     }
 }
 
-/**
- * Fetch vectors by IDs
- */
+// Fetch by IDs
 async function fetchVectors(vectorIds) {
     try {
         if (!index) {
@@ -355,9 +326,7 @@ async function fetchVectors(vectorIds) {
     }
 }
 
-/**
- * Get index statistics
- */
+// Index stats
 async function getIndexStats() {
     try {
         if (!index) {
@@ -378,9 +347,7 @@ async function getIndexStats() {
     }
 }
 
-/**
- * Store conversation history (using metadata)
- */
+// Stub: store conversation (use a DB in real apps)
 async function storeConversation(userMessage, aiResponse, contextChunks = []) {
     try {
         // Pinecone is optimized for vectors, not relational data
@@ -395,7 +362,7 @@ async function storeConversation(userMessage, aiResponse, contextChunks = []) {
             timestamp: new Date().toISOString()
         };
 
-        console.log(`💬 Conversation logged: ${conversation.id}`);
+    console.log(`Conversation logged: ${conversation.id}`);
 
         return conversation;
     } catch (error) {
@@ -404,16 +371,14 @@ async function storeConversation(userMessage, aiResponse, contextChunks = []) {
     }
 }
 
-/**
- * Hybrid search (combining vector similarity with keyword filtering)
- */
+// Simple hybrid search: vector + keyword filter
 async function hybridSearch(queryEmbedding, keywords = [], topK = 10, threshold = 0.75) {
     try {
         if (!index) {
             await initializePinecone();
         }
 
-        console.log(`🔍 Performing hybrid search with ${keywords.length} keywords...`);
+    console.log(`Hybrid search (keywords=${keywords.length})`);
 
         // Perform vector search
         const results = await searchSimilarVectors(queryEmbedding, topK * 2, threshold);

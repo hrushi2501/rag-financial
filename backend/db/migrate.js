@@ -6,7 +6,7 @@
 const { initializeDatabase, healthCheck, closePool } = require('./pgvector');
 
 async function migrate() {
-    console.log('\n🗄️  Database Migration Starting...\n');
+    console.log('\nDatabase migration starting...\n');
     console.log('='.repeat(50));
 
     try {
@@ -18,15 +18,15 @@ async function migrate() {
             throw new Error(`Database connection failed: ${health.error}`);
         }
 
-        console.log(`✓ Database connected (latency: ${health.latency})`);
+    console.log(`Database connected (latency: ${health.latency})`);
 
         // Initialize database schema
-        console.log('\n2. Initializing database schema...');
-        await initializeDatabase();
-        console.log('✓ Database schema initialized');
+    console.log('\n2. Initializing database schema...');
+    await initializeDatabase();
+    console.log('Database schema initialized');
 
-        console.log('\n' + '='.repeat(50));
-        console.log('✅ Migration completed successfully!\n');
+    console.log('\n' + '='.repeat(50));
+    console.log('Migration completed successfully!\n');
 
         // Display summary
         console.log('Tables created:');
@@ -41,7 +41,7 @@ async function migrate() {
         console.log('');
 
     } catch (error) {
-        console.error('\n❌ Migration failed:', error.message);
+        console.error('\nMigration failed:', error.message);
         console.error('\nPlease ensure:');
         console.error('  1. PostgreSQL is running');
         console.error('  2. Database credentials in .env are correct');

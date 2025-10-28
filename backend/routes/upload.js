@@ -1,7 +1,4 @@
-/**
- * Document Upload Routes
- * Handles file uploads, text extraction, processing, and vector storage
- */
+// Upload routes: extract, chunk, embed, store
 
 const express = require('express');
 const router = express.Router();
@@ -17,8 +14,9 @@ const { cleanText, tokenizeSentences } = require('../nlp/preprocess');
 const { chunkText } = require('../nlp/chunk');
 const { generateBatchEmbeddings } = require('../nlp/embeddings');
 const { insertDocument, insertVectors } = require('../db/pinecone');
+const { extractDocxImagesText, OCR_ENABLED } = require('../nlp/ocr');
 
-// Configure multer for file uploads
+// Multer storage
 const storage = multer.diskStorage({
     destination: async (req, file, cb) => {
         const uploadDir = process.env.UPLOAD_DIR || './uploads';
@@ -52,9 +50,7 @@ const upload = multer({
     }
 });
 
-/**
- * Extract text from PDF file
- */
+// PDF -> text
 async function extractPDF(filePath) {
     try {
         const dataBuffer = await fs.readFile(filePath);
@@ -66,22 +62,28 @@ async function extractPDF(filePath) {
     }
 }
 
-/**
- * Extract text from DOCX file
- */
+// DOCX -> text (+optional OCR)
 async function extractDOCX(filePath) {
     try {
         const result = await mammoth.extractRawText({ path: filePath });
-        return result.value;
+        let text = result.value || '';
+
+        // Optional OCR of embedded images
+        if (OCR_ENABLED) {
+            const ocrText = await extractDocxImagesText(filePath);
+            if (ocrText && ocrText.length > 0) {
+                text += `\n\n[OCR Extracted]\n${ocrText}`;
+            }
+        }
+
+        return text;
     } catch (error) {
         console.error('DOCX extraction error:', error);
         throw new Error('Failed to extract text from DOCX');
     }
 }
 
-/**
- * Extract text from TXT file
- */
+// TXT -> text
 async function extractTXT(filePath) {
     try {
         const text = await fs.readFile(filePath, 'utf-8');
@@ -92,9 +94,7 @@ async function extractTXT(filePath) {
     }
 }
 
-/**
- * Extract text from CSV file
- */
+// CSV -> pseudo-text
 async function extractCSV(filePath) {
     try {
         const fileContent = await fs.readFile(filePath, 'utf-8');
@@ -117,11 +117,9 @@ async function extractCSV(filePath) {
     }
 }
 
-/**
- * Extract text based on file type
- */
+// Dispatch by file type
 async function extractText(filePath, fileType) {
-    console.log(`Extracting text from ${fileType} file...`);
+    console.log(`Extracting ${fileType}...`);
 
     switch (fileType.toLowerCase()) {
         case 'pdf':
@@ -138,10 +136,7 @@ async function extractText(filePath, fileType) {
     }
 }
 
-/**
- * POST /api/upload
- * Upload and process a document
- */
+// POST /api/upload — file
 router.post('/', upload.single('file'), async (req, res) => {
     let documentId = null;
     let filePath = null;
@@ -158,56 +153,48 @@ router.post('/', upload.single('file'), async (req, res) => {
         filePath = file.path;
         const fileType = path.extname(file.originalname).toLowerCase().replace('.', '');
 
-        console.log('\n📁 Processing upload:', file.originalname);
-        console.log(`File size: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
-        console.log(`File type: ${fileType}`);
+    console.log(`Upload: ${file.originalname} (${(file.size / 1024 / 1024).toFixed(2)} MB, ${fileType})`);
 
         const startTime = Date.now();
 
-        // Step 1: Extract text from document
-        console.log('\n📖 Step 1: Extracting text...');
+    // 1) Extract
         const rawText = await extractText(filePath, fileType);
-        console.log(`✓ Extracted ${rawText.length} characters`);
+    console.log(`Extracted ${rawText.length} chars`);
 
         if (rawText.length === 0) {
             throw new Error('No text content found in document');
         }
 
-        // Step 2: Preprocess text
-        console.log('\n🧹 Step 2: Preprocessing text...');
+    // 2) Preprocess
         const cleanedText = cleanText(rawText);
         const sentences = tokenizeSentences(cleanedText);
-        console.log(`✓ Cleaned text: ${cleanedText.length} characters, ${sentences.length} sentences`);
+    console.log(`Preprocessed: ${cleanedText.length} chars, ${sentences.length} sentences`);
 
-        // Step 3: Chunk text
-        console.log('\n✂️ Step 3: Chunking text...');
+        // 3) Chunk
         const chunks = chunkText(cleanedText, {
             chunkSize: parseInt(process.env.CHUNK_SIZE) || 500,
             overlap: parseInt(process.env.CHUNK_OVERLAP) || 50,
             preserveSentences: true
         });
-        console.log(`✓ Created ${chunks.length} chunks`);
+        console.log(`Chunks: ${chunks.length}`);
 
         if (chunks.length === 0) {
             throw new Error('Failed to create text chunks');
         }
 
-        // Step 4: Generate embeddings
-        console.log('\n🧠 Step 4: Generating embeddings...');
+    // 4) Embeddings
         const texts = chunks.map(chunk => chunk.text);
 
         let processedCount = 0;
         const embeddings = await generateBatchEmbeddings(texts, (progress, current, total) => {
             if (current > processedCount) {
                 processedCount = current;
-                console.log(`  Progress: ${current}/${total} (${progress.toFixed(1)}%)`);
+                console.log(`Progress: ${current}/${total} (${progress.toFixed(1)}%)`);
             }
         });
+        console.log(`Embeddings: ${embeddings.length}`);
 
-        console.log(`✓ Generated ${embeddings.length} embeddings`);
-
-        // Step 5: Save to database
-        console.log('\n💾 Step 5: Saving to database...');
+    // 5) Store
 
         // Insert document metadata (returns string ID)
         documentId = await insertDocument(
@@ -221,11 +208,11 @@ router.post('/', upload.single('file'), async (req, res) => {
             }
         );
 
-        console.log(`✓ Document saved with ID: ${documentId}`);
+    console.log(`Document ID: ${documentId}`);
 
         // Insert vectors with filename
         const vectorCount = await insertVectors(documentId, file.originalname, chunks, embeddings);
-        console.log(`✓ Inserted ${vectorCount} vectors`);
+    console.log(`Vectors inserted: ${vectorCount}`);
 
         // Delete temporary file
         await fs.unlink(filePath).catch(err =>
@@ -233,7 +220,7 @@ router.post('/', upload.single('file'), async (req, res) => {
         );
 
         const totalTime = Date.now() - startTime;
-        console.log(`\n✅ Upload complete in ${(totalTime / 1000).toFixed(2)}s`);
+    console.log(`Done in ${(totalTime / 1000).toFixed(2)}s`);
 
         res.json({
             success: true,
@@ -249,14 +236,14 @@ router.post('/', upload.single('file'), async (req, res) => {
         });
 
     } catch (error) {
-        console.error('\n❌ Upload error:', error);
+    console.error('Upload error:', error);
 
         // Rollback: Delete document if it was created
         if (documentId) {
             try {
                 const { deleteDocument } = require('../db/pgvector');
                 await deleteDocument(documentId);
-                console.log('✓ Rolled back document creation');
+                console.log('Rolled back document creation');
             } catch (rollbackError) {
                 console.error('Rollback failed:', rollbackError);
             }
@@ -275,10 +262,7 @@ router.post('/', upload.single('file'), async (req, res) => {
     }
 });
 
-/**
- * POST /api/upload/text
- * Process raw text directly (no file upload)
- */
+// POST /api/upload/text — raw text
 router.post('/text', async (req, res) => {
     let documentId = null;
 
@@ -292,26 +276,26 @@ router.post('/text', async (req, res) => {
             });
         }
 
-        console.log(`\n📝 Processing raw text (${text.length} characters)`);
+    console.log(`Raw text (${text.length} chars)`);
 
         const startTime = Date.now();
 
         // Preprocess
         const cleanedText = cleanText(text);
         const sentences = tokenizeSentences(cleanedText);
-        console.log(`✓ Preprocessed: ${sentences.length} sentences`);
+    console.log(`Preprocessed: ${sentences.length} sentences`);
 
         // Chunk
         const chunks = chunkText(cleanedText, {
             chunkSize: parseInt(process.env.CHUNK_SIZE) || 500,
             overlap: parseInt(process.env.CHUNK_OVERLAP) || 50
         });
-        console.log(`✓ Created ${chunks.length} chunks`);
+    console.log(`Chunks: ${chunks.length}`);
 
         // Generate embeddings
         const texts = chunks.map(chunk => chunk.text);
         const embeddings = await generateBatchEmbeddings(texts);
-        console.log(`✓ Generated ${embeddings.length} embeddings`);
+    console.log(`Embeddings: ${embeddings.length}`);
 
         // Save to database
         documentId = await insertDocument({
