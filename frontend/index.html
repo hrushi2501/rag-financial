@@ -28,10 +28,10 @@
                     <button class="nav-btn" data-view="documents">
                         <i class="fas fa-folder"></i> Documents
                     </button>
+                    <button class="nav-btn" data-view="help">
+                        <i class="fas fa-question-circle"></i> Help
+                    </button>
                 </nav>
-                <button id="helpBtn" class="btn btn-secondary" title="Help & Troubleshooting">
-                    <i class="fas fa-question-circle"></i>
-                </button>
                 <!-- Theme Toggle Switch -->
                 <button id="themeToggle" class="theme-toggle" role="switch" aria-label="Toggle dark mode" aria-checked="false">
                     <span class="toggle-track"></span>
@@ -74,13 +74,13 @@
 
                 <div class="upload-container">
                     <div class="upload-area" id="uploadArea">
-                        <input type="file" id="fileInput" accept=".pdf,.txt,.doc,.docx" multiple hidden>
+                        <input type="file" id="fileInput" accept=".pdf,.txt,.doc,.docx,.xlsx,.xls,.csv" multiple hidden>
                         <div class="upload-icon">
                             <i class="fas fa-cloud-upload-alt"></i>
                         </div>
                         <h3>Drag & Drop Files Here</h3>
                         <p>or click to browse</p>
-                        <p class="file-types">Supported: PDF, TXT, DOC, DOCX</p>
+                        <p class="file-types">Supported: PDF, TXT, DOC, DOCX, XLSX, XLS, CSV</p>
                     </div>
 
                     <div class="upload-options">
@@ -105,49 +105,79 @@
 
             
             <section id="chatView" class="view">
-                <div class="view-header">
-                    <h1><i class="fas fa-comments"></i> Chat Assistant</h1>
-                    <p>Ask questions about your documents with AI-powered responses</p>
-                </div>
-
-                <div class="chat-container">
-                    <div class="chat-messages" id="chatMessages">
-                        <div class="chat-message assistant">
-                            <div class="message-avatar">
-                                <i class="fas fa-robot"></i>
-                            </div>
-                            <div class="message-content">
-                                <p>Hello! I'm your financial document assistant. Ask me anything about your uploaded
-                                    documents.</p>
-                            </div>
+                <div class="gpt-layout">
+                    <!-- Sidebar -->
+                    <nav class="gpt-sidebar" id="chatSidebar">
+                        <div class="gpt-sidebar-header">
+                            <span class="gpt-logo"><i class="fas fa-file-invoice-dollar"></i></span>
+                            <button id="toggleSidebarBtn" class="btn-icon gpt-sidebar-toggle" title="Hide sidebar">
+                                <i class="fas fa-angle-left"></i>
+                            </button>
+                        </div>
+                        <button id="newChatBtn" class="btn btn-primary gpt-new-chat-btn">
+                            <i class="fas fa-plus"></i> New Chat
+                        </button>
+                        <div class="gpt-sidebar-section">
+                            <div class="gpt-sidebar-title">Chats</div>
+                            <ul id="chatHistoryList" class="gpt-chat-history-list"></ul>
+                        </div>
+                        <!-- Add more sections here if needed (e.g., projects, docs) -->
+                    </nav>
+                    <!-- Retoggle button -->
+                    <button id="showSidebarBtn" class="btn-icon gpt-show-sidebar-btn" title="Show sidebar" style="display:none;">
+                        <i class="fas fa-angle-right"></i>
+                    </button>
+                    <!-- Context Menu -->
+                    <div id="chatContextMenu" class="chat-context-menu">
+                        <div class="chat-context-menu-item" data-action="rename">
+                            <i class="fas fa-edit"></i> Rename
+                        </div>
+                        <div class="chat-context-menu-item danger" data-action="delete">
+                            <i class="fas fa-trash"></i> Delete
                         </div>
                     </div>
-
-                    <div class="chat-input-container">
-                        <textarea id="chatInput" placeholder="Ask a question about your documents..."
-                            rows="2"></textarea>
-                        <button id="chatSendBtn" class="btn btn-primary">
-                            <i class="fas fa-paper-plane"></i> Send
-                        </button>
-                        <button id="chatClearBtn" class="btn btn-secondary">
-                            <i class="fas fa-trash"></i> Clear
-                        </button>
-                    </div>
-
-                    <div class="chat-options">
-                        <label>
-                            <input type="checkbox" id="includeContext" checked>
-                            Include Document Context
-                        </label>
-                        <label>
-                            Context Chunks:
-                            <select id="contextTopK">
-                                <option value="3">3</option>
-                                <option value="5" selected>5</option>
-                                <option value="10">10</option>
-                            </select>
-                        </label>
-                    </div>
+                    <!-- Main Chat Area -->
+                    <main class="gpt-main-area" id="chatMainArea">
+                        <header class="gpt-main-header">
+                            <h1><i class="fas fa-comments"></i> Chat Assistant</h1>
+                            <span class="gpt-main-desc">Ask questions about your documents with AI-powered responses</span>
+                        </header>
+                        <section class="gpt-chat-section">
+                            <div class="gpt-chat-messages" id="chatMessages">
+                                <div class="chat-message assistant">
+                                    <div class="message-avatar">
+                                        <i class="fas fa-robot"></i>
+                                    </div>
+                                    <div class="message-content">
+                                        <p>Hello! I'm your financial document assistant. Ask me anything about your uploaded documents.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <form class="gpt-chat-input-row" onsubmit="return false;">
+                                <textarea id="chatInput" placeholder="Ask a question about your documents..." rows="1"></textarea>
+                                <button id="chatSendBtn" class="btn btn-primary gpt-send-btn" type="button">
+                                    <i class="fas fa-paper-plane"></i> Send
+                                </button>
+                                <button id="chatClearBtn" class="btn btn-secondary gpt-clear-btn" type="button">
+                                    <i class="fas fa-trash"></i> Clear
+                                </button>
+                            </form>
+                            <div class="gpt-chat-options-row">
+                                <label>
+                                    <input type="checkbox" id="includeContext" checked>
+                                    Include Document Context
+                                </label>
+                                <label>
+                                    Context Chunks:
+                                    <select id="contextTopK">
+                                        <option value="3">3</option>
+                                        <option value="5" selected>5</option>
+                                        <option value="10">10</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </section>
+                    </main>
                 </div>
             </section>
 
@@ -165,85 +195,197 @@
                 <div id="documentsList" class="documents-list"></div>
             </section>
 
+            
+            <!-- Help View -->
+            <section id="helpView" class="view">
+                <div class="view-header">
+                    <h1><i class="fas fa-question-circle"></i> Help & Guide</h1>
+                    <p>Everything you need to know to get started</p>
+                </div>
+
+                <div class="help-content">
+                    <!-- Getting Started -->
+                    <div class="help-section-card">
+                        <div class="help-section-icon">
+                            <i class="fas fa-rocket"></i>
+                        </div>
+                        <h2>Getting Started</h2>
+                        <div class="help-steps">
+                            <div class="help-step">
+                                <span class="step-number">1</span>
+                                <div class="step-content">
+                                    <h3><i class="fas fa-upload"></i> Upload Documents</h3>
+                                    <p>Click the <strong>Upload</strong> tab and drag-and-drop your files. Supports PDF, Word, Text, Excel, and CSV (≤10MB each).</p>
+                                </div>
+                            </div>
+                            <div class="help-step">
+                                <span class="step-number">2</span>
+                                <div class="step-content">
+                                    <h3><i class="fas fa-comments"></i> Ask Questions</h3>
+                                    <p>Go to <strong>Chat</strong> and ask naturally. The AI searches your documents and provides answers with sources.</p>
+                                </div>
+                            </div>
+                            <div class="help-step">
+                                <span class="step-number">3</span>
+                                <div class="step-content">
+                                    <h3><i class="fas fa-folder-open"></i> Manage Files</h3>
+                                    <p>Visit <strong>Documents</strong> to review uploads. Delete items you no longer need.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Supported File Types (moved up) -->
+                    <div class="help-section-card">
+                        <div class="help-section-icon">
+                            <i class="fas fa-file-alt"></i>
+                        </div>
+                        <h2>Supported File Types</h2>
+                        <div class="help-faq">
+                            <div class="faq-item">
+                                <h3>PDF Documents</h3>
+                                <p>Common for financial reports, statements, and official documents. Fully supported.</p>
+                            </div>
+                            <div class="faq-item">
+                                <h3>Word Documents (.docx, .doc)</h3>
+                                <p>Formatted text and tables supported. Ideal for reports and memos.</p>
+                            </div>
+                            <div class="faq-item">
+                                <h3>Text Files (.txt)</h3>
+                                <p>Plain text for notes and transcripts.</p>
+                            </div>
+                            <div class="faq-item">
+                                <h3>Excel Sheets (.xlsx, .xls)</h3>
+                                <p>Reads sheet data and tables via built-in extractor. Great for tabular finance data.</p>
+                            </div>
+                            <div class="faq-item">
+                                <h3>CSV Files (.csv)</h3>
+                                <p>Parses headers and rows as structured text for accurate retrieval.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tips for Success -->
+                    <div class="help-section-card">
+                        <div class="help-section-icon">
+                            <i class="fas fa-lightbulb"></i>
+                        </div>
+                        <h2>Tips for Best Results</h2>
+                        <ul class="help-tips">
+                            <li>
+                                <i class="fas fa-check-circle"></i>
+                                <span><strong>Be Specific:</strong> Ask "What was Q3 revenue?" instead of "Tell me about revenue"</span>
+                            </li>
+                            <li>
+                                <i class="fas fa-check-circle"></i>
+                                <span><strong>File Size:</strong> Keep documents under 10MB for faster processing</span>
+                            </li>
+                            <li>
+                                <i class="fas fa-check-circle"></i>
+                                <span><strong>Use Context:</strong> Enable "Include Document Context" for accurate, source-backed answers</span>
+                            </li>
+                            <li>
+                                <i class="fas fa-check-circle"></i>
+                                <span><strong>Organize Chats:</strong> Create new conversations for different topics using "New Chat"</span>
+                            </li>
+                            <li>
+                                <i class="fas fa-check-circle"></i>
+                                <span><strong>Adjust Chunks:</strong> Increase to 10 chunks if answers seem incomplete</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Common Questions -->
+                    <div class="help-section-card">
+                        <div class="help-section-icon">
+                            <i class="fas fa-question"></i>
+                        </div>
+                        <h2>Common Questions</h2>
+                        <div class="help-faq">
+                            <div class="faq-item">
+                                <h3>File won't upload?</h3>
+                                <p>Ensure your file is a supported type (PDF, Word, Text, Excel, CSV) and under 10MB. Try a different browser if it persists.</p>
+                            </div>
+                            <div class="faq-item">
+                                <h3>Getting incomplete answers?</h3>
+                                <p>Increase "Context Chunks" to 10 in chat settings. Ask more specific questions with details.</p>
+                            </div>
+                            <div class="faq-item">
+                                <h3>System says "Offline"?</h3>
+                                <p>Refresh the page and check your internet. If it continues, the server may be restarting.</p>
+                            </div>
+                            <div class="faq-item">
+                                <h3>How to delete old chats?</h3>
+                                <p>Right-click on any chat in the sidebar and select "Delete" from the menu.</p>
+                            </div>
+                            <div class="faq-item">
+                                <h3>Can I rename conversations?</h3>
+                                <p>Yes! Right-click any chat and choose "Rename" to give it a custom name.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Best Practices -->
+                    <div class="help-section-card">
+                        <div class="help-section-icon">
+                            <i class="fas fa-star"></i>
+                        </div>
+                        <h2>Best Practices</h2>
+                        <ul class="help-tips">
+                            <li>
+                                <i class="fas fa-check-circle"></i>
+                                <span><strong>Upload Related Docs:</strong> Group similar documents together for better context</span>
+                            </li>
+                            <li>
+                                <i class="fas fa-check-circle"></i>
+                                <span><strong>Clear Names:</strong> Use descriptive file names like "Q3-Financial-Report.pdf"</span>
+                            </li>
+                            <li>
+                                <i class="fas fa-check-circle"></i>
+                                <span><strong>Regular Cleanup:</strong> Delete outdated documents to keep results relevant</span>
+                            </li>
+                            <li>
+                                <i class="fas fa-check-circle"></i>
+                                <span><strong>Test Questions:</strong> Try simple queries first to understand how the system responds</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- System Status (moved to end) -->
+                    <div class="help-section-card">
+                        <div class="help-section-icon">
+                            <i class="fas fa-heartbeat"></i>
+                        </div>
+                        <h2>System Status Guide</h2>
+                        <div class="status-examples">
+                            <div class="status-item">
+                                <span class="status-badge success">
+                                    <i class="fas fa-circle"></i> Online
+                                </span>
+                                <p><strong>All Good!</strong> All systems are operational.</p>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-badge warning">
+                                    <i class="fas fa-circle"></i> Degraded
+                                </span>
+                                <p><strong>Slower than usual</strong> but still working. Please be patient.</p>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-badge danger">
+                                    <i class="fas fa-circle"></i> Offline
+                                </span>
+                                <p><strong>Can't connect.</strong> Check your internet or refresh the page.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
         </div>
     </main>
 
     
     <div id="toastContainer" class="toast-container"></div>
-
-    
-    <div id="helpModal" class="modal hidden" aria-hidden="true" role="dialog" aria-labelledby="helpTitle">
-        <div class="modal-backdrop" data-close="helpModal"></div>
-        <div class="modal-content" role="document">
-            <div class="modal-header">
-                <h2 id="helpTitle"><i class="fas fa-question-circle"></i> Help & Troubleshooting</h2>
-                <button class="btn-icon close" data-close="helpModal" aria-label="Close help">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="modal-body">
-                <section class="help-section">
-                    <h3>Quick start</h3>
-                    <div class="help-grid">
-                        <div class="help-card">
-                            <h4>1. Upload</h4>
-                            <p>Drop PDF/DOCX/TXT/CSV files in Upload. OCR for images in DOCX is supported when enabled.</p>
-                        </div>
-                        <div class="help-card">
-                            <h4>2. Search</h4>
-                            <p>Use natural language queries. Tune results count and threshold for recall/precision.</p>
-                        </div>
-                        <div class="help-card">
-                            <h4>3. Chat</h4>
-                            <p>Ask questions with ΓÇ£Include ContextΓÇ¥ to ground answers. Citations appear as chips.</p>
-                        </div>
-                    </div>
-                </section>
-
-                <section class="help-section">
-                    <h3>Health states</h3>
-                    <div class="badge-row">
-                        <span class="badge success"><i class="fas fa-circle"></i> Online</span>
-                        <span class="badge warning"><i class="fas fa-circle"></i> Degraded</span>
-                        <span class="badge danger"><i class="fas fa-circle"></i> Offline</span>
-                    </div>
-                    <ul class="help-list">
-                        <li><strong>Online</strong>: All services are healthy.</li>
-                        <li><strong>Degraded</strong>: External services (Pinecone/Embeddings) are slow or partially unavailable; retries may occur.</li>
-                        <li><strong>Offline</strong>: Backend unreachable or critical failure. Check your connection and server logs.</li>
-                    </ul>
-                </section>
-
-                <section class="help-section">
-                    <h3>Troubleshooting</h3>
-                    <div class="help-grid">
-                        <div class="help-card">
-                            <h4>Upload issues</h4>
-                            <ul class="help-list">
-                                <li>Max size ~10MB per file.</li>
-                                <li>Supported: PDF, DOCX, TXT, CSV.</li>
-                                <li>Scanned PDFs need external OCR (e.g., Google Vision) or pre-processing.</li>
-                            </ul>
-                        </div>
-                        <div class="help-card">
-                            <h4>Search quality</h4>
-                            <ul class="help-list">
-                                <li>Lower threshold for more recall; raise for more precision.</li>
-                                <li>Increase <em>Results</em> for broader context.</li>
-                            </ul>
-                        </div>
-                        <div class="help-card">
-                            <h4>Connectivity</h4>
-                            <ul class="help-list">
-                                <li>If offline, ensure internet is connected.</li>
-                                <li>API 503/429 indicates overload or rate limiting; try again shortly.</li>
-                            </ul>
-                        </div>
-                    </div>
-                </section>
-            </div>
-        </div>
-    </div>
 
     
     <div id="loadingOverlay" class="loading-overlay hidden">

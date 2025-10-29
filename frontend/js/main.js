@@ -71,9 +71,23 @@ async function checkSystemHealth() {
     const statusIndicator = document.getElementById('statusIndicator');
     const statusText = document.getElementById('statusText');
 
+    // Add checking state
+    if (statusIndicator) {
+        statusIndicator.className = 'status-indicator status-checking';
+        statusIndicator.style.opacity = '0.6';
+    }
+    if (statusText) {
+        statusText.textContent = 'Checking...';
+    }
+
     try {
         const response = await fetch('/api/health');
         const data = await response.json();
+
+        // Remove checking state
+        if (statusIndicator) {
+            statusIndicator.style.opacity = '1';
+        }
 
         // Map to Online/Degraded/Offline
         if (data.status === 'healthy') {
@@ -305,22 +319,6 @@ function initializeApp() {
     const refreshDocsBtn = document.getElementById('refreshDocsBtn');
     if (refreshDocsBtn) {
         refreshDocsBtn.addEventListener('click', loadDocumentsList);
-    }
-
-    // Help modal handling
-    const helpBtn = document.getElementById('helpBtn');
-    const helpModal = document.getElementById('helpModal');
-    if (helpBtn && helpModal) {
-        const open = () => { helpModal.classList.remove('hidden'); helpModal.setAttribute('aria-hidden', 'false'); };
-        const close = () => { helpModal.classList.add('hidden'); helpModal.setAttribute('aria-hidden', 'true'); };
-        helpBtn.addEventListener('click', open);
-        helpModal.addEventListener('click', (e) => {
-            const target = e.target;
-            if ((target.closest && target.closest('[data-close="helpModal"]')) || target.classList.contains('modal-backdrop')) {
-                close();
-            }
-        });
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
     }
 
     console.log('App ready');

@@ -9,6 +9,32 @@ python_backend/.env
 __pycache__/
 *.pyc
 .venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
 
-# Local state
+# Local state and data
+python_backend/data/
 python_backend/data/docs.json
+python_backend/data/chats.json
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/

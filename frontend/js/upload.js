@@ -145,6 +145,13 @@ async function uploadAllFiles() {
 
     const uploadProgress = document.getElementById('uploadProgress');
     const uploadResults = document.getElementById('uploadResults');
+    const uploadBtn = document.querySelector('.upload-btn');
+
+    // Add loading state to button
+    if (uploadBtn) {
+        uploadBtn.classList.add('btn-loading');
+        uploadBtn.disabled = true;
+    }
 
     uploadProgress.classList.remove('hidden');
     uploadResults.classList.add('hidden');
@@ -173,6 +180,12 @@ async function uploadAllFiles() {
             console.error(`Upload failed for ${file.name}:`, error);
             results.failed.push({ file: file.name, error: error.message });
         }
+    }
+
+    // Remove loading state from button
+    if (uploadBtn) {
+        uploadBtn.classList.remove('btn-loading');
+        uploadBtn.disabled = false;
     }
 
     // Hide progress, show results
