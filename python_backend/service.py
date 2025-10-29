@@ -324,20 +324,68 @@ class RAGService:
         doc = Docx(BytesIO(file_bytes))
         return "\n\n".join([p.text for p in doc.paragraphs if p.text.strip()])
 
+    def _extract_excel(self, file_bytes: bytes) -> str:
+        """Extract text from Excel files (.xlsx, .xls) converting to structured text."""
+        try:
+            import openpyxl
+            from openpyxl import load_workbook
+        except ImportError:
+            raise ValueError("openpyxl not installed. Run: pip install openpyxl")
+        
+        wb = load_workbook(BytesIO(file_bytes), data_only=True)
+        text_parts = []
+        
+        for sheet_name in wb.sheetnames:
+            sheet = wb[sheet_name]
+            text_parts.append(f"\n\n=== Sheet: {sheet_name} ===\n")
+            
+            # Extract header row if present
+            headers = []
+            for cell in sheet[1]:
+                if cell.value:
+                    headers.append(str(cell.value))
+            
+            if headers:
+                text_parts.append(" | ".join(headers))
+                text_parts.append("-" * (len(" | ".join(headers))))
+            
+            # Extract data rows
+            for row in sheet.iter_rows(min_row=2 if headers else 1, values_only=True):
+                row_text = " | ".join([str(cell) if cell is not None else "" for cell in row])
+                if row_text.strip():
+                    text_parts.append(row_text)
+        
+        return "\n".join(text_parts)
+
     def _extract_csv(self, file_bytes: bytes) -> str:
-        """Lightweight CSV to plain text without pandas dependency."""
+        """Enhanced CSV to plain text with better formatting."""
         import csv
         from io import StringIO
         text = file_bytes.decode("utf-8", errors="ignore")
         reader = csv.reader(StringIO(text))
-        rows = [", ".join(row) for row in reader]
-        return "\n".join(rows)
+        rows = list(reader)
+        
+        if not rows:
+            return ""
+        
+        # Format as table
+        text_parts = []
+        if len(rows) > 0:
+            # Header
+            text_parts.append(" | ".join(rows[0]))
+            text_parts.append("-" * len(" | ".join(rows[0])))
+            # Data rows
+            for row in rows[1:]:
+                text_parts.append(" | ".join(row))
+        
+        return "\n".join(text_parts)
 
     def _extract_text(self, file_bytes: bytes) -> str:
         return file_bytes.decode("utf-8", errors="ignore")
 
     def _extract_image(self, file_bytes: bytes) -> str:
         raise ValueError("Image OCR not supported. Please use text-based PDFs or documents.")
+
 
     def extract_text(self, filename: str, content: bytes) -> str:
         """Extract text from uploaded file based on extension."""
@@ -346,6 +394,8 @@ class RAGService:
             ".pdf": self._extract_pdf,
             ".docx": self._extract_docx,
             ".doc": self._extract_docx,
+            ".xlsx": self._extract_excel,
+            ".xls": self._extract_excel,
             ".csv": self._extract_csv,
             ".txt": self._extract_text,
         }
@@ -446,14 +496,28 @@ class RAGService:
 
         results = self.search(query, top_k)
         context = "\n\n".join([r.content for r in results])
-        citations = [
-            {
-                "filename": r.metadata.get("filename"),
-                "document_id": r.metadata.get("document_id"),
-                "chunk_index": int(r.metadata.get("chunk_index")) if r.metadata.get("chunk_index") is not None else None,
-            }
-            for r in results
-        ]
+        citations = []
+        for r in results:
+            md = r.metadata or {}
+            doc_id = md.get("document_id")
+            # Prefer filename from vector metadata; fallback to local index if missing (older vectors)
+            filename = md.get("filename")
+            if not filename and doc_id:
+                try:
+                    filename = (self._docs.get(doc_id) or {}).get("filename")
+                except Exception:
+                    filename = None
+            # Support both snake_case and camelCase chunk index keys
+            raw_idx = md.get("chunk_index") if md.get("chunk_index") is not None else md.get("chunkIndex")
+            try:
+                chunk_index = int(raw_idx) if raw_idx is not None else None
+            except Exception:
+                chunk_index = None
+            citations.append({
+                "filename": filename,
+                "document_id": doc_id,
+                "chunk_index": chunk_index,
+            })
 
         # If no LLM, fall back to a simple metric extractor for common finance asks
         if not self.llm:
@@ -465,12 +529,14 @@ class RAGService:
 
         # Prompt: be intelligent, extract figures precisely, cite sources; prefer context but allow light general chat
         base_instructions = (
-            "You are a helpful financial analyst assistant.\n"
-            "When the user asks for financial figures (e.g., revenue, net income, EBITDA, margins, growth),\n"
-            "extract the exact numbers from the provided context. Include: amount, units/currency, period (e.g., FY2024, Q2 2025), and trend if clear.\n"
-            "Prefer concise bullets or a small table. Cite sources using filenames and chunk indices provided.\n"
-            "Do not invent numbers not present in the context. If unavailable, say so explicitly.\n"
-            "You may use general knowledge only for brief definitions or clarification, not for factual financial values.\n"
+            "You are a precise financial analyst assistant.\n"
+            "Answer ONLY the question asked. If the user asks for a specific figure, return exactly that figure first.\n"
+            "When extracting financials (revenue, net income, EBITDA, margins, growth, guidance):\n"
+            "- Give a one-line direct answer first with the exact value, units/currency, and the period (e.g., FY2024, Q2 2025).\n"
+            "- Then provide 2–5 concise bullets or a tiny table for context (breakdown, YoY/ QoQ deltas, ranges, or key qualifiers).\n"
+            "- Cite sources using the provided citations list (filename and chunk index).\n"
+            "- DO NOT fabricate numbers; only use the provided context. If a requested value isn’t in context, say ‘Not found in provided documents’ and suggest what to upload.\n"
+            "- Prefer brevity. Avoid extra commentary or definitions unless explicitly requested.\n"
         )
 
         if include_context and context.strip():

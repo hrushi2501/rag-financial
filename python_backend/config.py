@@ -47,7 +47,7 @@ DEFAULT_TOP_K = 5
 MAX_CONTEXT_LENGTH = 6000
 
 # FILE UPLOAD CONFIGURATION
-SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".csv", ".txt"}
+SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".csv", ".txt"}
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", 10485760))  # 10MB default
 MAX_FILES_PER_REQUEST = 10
 
