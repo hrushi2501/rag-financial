@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial RAG System</title>
+    <link rel="stylesheet" href="css/tailwind.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-file-invoice-dollar"></i>
+                    <span>Financial RAG</span>
+                </div>
+                <nav class="nav">
+                    <button class="nav-btn active" data-view="upload">
+                        <i class="fas fa-upload"></i> Upload
+                    </button>
+                    <button class="nav-btn" data-view="chat">
+                        <i class="fas fa-comments"></i> Chat
+                    </button>
+                    <button class="nav-btn" data-view="documents">
+                        <i class="fas fa-folder"></i> Documents
+                    </button>
+                </nav>
+                <button id="helpBtn" class="btn btn-secondary" title="Help & Troubleshooting">
+                    <i class="fas fa-question-circle"></i>
+                </button>
+                <!-- Theme Toggle Switch -->
+                <button id="themeToggle" class="theme-toggle" role="switch" aria-label="Toggle dark mode" aria-checked="false">
+                    <span class="toggle-track"></span>
+                    <span class="toggle-knob">
+                        <span class="icon-sun" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                                <path d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.8 1.42-1.42zm10.48 14.32l1.79 1.8 1.41-1.41-1.8-1.79-1.4 1.4zM12 4V1h0v3h0zm0 19v-3h0v3h0zm8-8h3v0h-3v0zM1 12h3v0H1v0zm15.24-7.16l1.42 1.42 1.79-1.8-1.41-1.41-1.8 1.79zM4.22 18.36l1.8-1.79-1.42-1.42-1.79 1.8 1.41 1.41zM12 6a6 6 0 100 12 6 6 0 000-12z"></path>
+                            </svg>
+                        </span>
+                        <span class="icon-moon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                                <path d="M21.64 13a9 9 0 01-11.31 7.36 9 9 0 008.95-11.2A7 7 0 0012 2a9 9 0 109.64 11z"></path>
+                            </svg>
+                        </span>
+                    </span>
+                </button>
+                <div class="system-status" title="System health">
+                    <span class="status-indicator" id="statusIndicator">
+                        <i class="fas fa-circle"></i>
+                    </span>
+                    <span id="statusText">Checking...</span>
+                    <span class="status-help" aria-hidden="true" title="Degraded means external services are slow or partially unavailable. Retries are enabled.">
+                        <i class="fas fa-info-circle"></i>
+                    </span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    
+    <main class="main-content">
+        <div class="container">
+
+            
+            <section id="uploadView" class="view active">
+                <div class="view-header">
+                    <h1><i class="fas fa-upload"></i> Upload Documents</h1>
+                    <p>Upload financial documents for semantic search and analysis</p>
+                </div>
+
+                <div class="upload-container">
+                    <div class="upload-area" id="uploadArea">
+                        <input type="file" id="fileInput" accept=".pdf,.txt,.doc,.docx" multiple hidden>
+                        <div class="upload-icon">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                        </div>
+                        <h3>Drag & Drop Files Here</h3>
+                        <p>or click to browse</p>
+                        <p class="file-types">Supported: PDF, TXT, DOC, DOCX</p>
+                    </div>
+
+                    <div class="upload-options">
+                        <h3>Upload Options</h3>
+                        <div class="option-group">
+                            <label>
+                                <input type="checkbox" id="preserveFormatting" checked>
+                                Preserve Formatting
+                            </label>
+                            <label>
+                                <input type="checkbox" id="extractTables" checked>
+                                Extract Tables
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="fileList" class="file-list hidden"></div>
+                <div id="uploadProgress" class="upload-progress hidden"></div>
+                <div id="uploadResults" class="upload-results hidden"></div>
+            </section>
+
+            
+            <section id="chatView" class="view">
+                <div class="view-header">
+                    <h1><i class="fas fa-comments"></i> Chat Assistant</h1>
+                    <p>Ask questions about your documents with AI-powered responses</p>
+                </div>
+
+                <div class="chat-container">
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="chat-message assistant">
+                            <div class="message-avatar">
+                                <i class="fas fa-robot"></i>
+                            </div>
+                            <div class="message-content">
+                                <p>Hello! I'm your financial document assistant. Ask me anything about your uploaded
+                                    documents.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="chat-input-container">
+                        <textarea id="chatInput" placeholder="Ask a question about your documents..."
+                            rows="2"></textarea>
+                        <button id="chatSendBtn" class="btn btn-primary">
+                            <i class="fas fa-paper-plane"></i> Send
+                        </button>
+                        <button id="chatClearBtn" class="btn btn-secondary">
+                            <i class="fas fa-trash"></i> Clear
+                        </button>
+                    </div>
+
+                    <div class="chat-options">
+                        <label>
+                            <input type="checkbox" id="includeContext" checked>
+                            Include Document Context
+                        </label>
+                        <label>
+                            Context Chunks:
+                            <select id="contextTopK">
+                                <option value="3">3</option>
+                                <option value="5" selected>5</option>
+                                <option value="10">10</option>
+                            </select>
+                        </label>
+                    </div>
+                </div>
+            </section>
+
+            
+            <section id="documentsView" class="view">
+                <div class="view-header">
+                    <h1><i class="fas fa-folder"></i> Document Library</h1>
+                    <p>Manage your uploaded documents</p>
+                    <button id="refreshDocsBtn" class="btn btn-secondary">
+                        <i class="fas fa-sync"></i> Refresh
+                    </button>
+                </div>
+
+                <div id="documentsStats" class="stats-grid"></div>
+                <div id="documentsList" class="documents-list"></div>
+            </section>
+
+        </div>
+    </main>
+
+    
+    <div id="toastContainer" class="toast-container"></div>
+
+    
+    <div id="helpModal" class="modal hidden" aria-hidden="true" role="dialog" aria-labelledby="helpTitle">
+        <div class="modal-backdrop" data-close="helpModal"></div>
+        <div class="modal-content" role="document">
+            <div class="modal-header">
+                <h2 id="helpTitle"><i class="fas fa-question-circle"></i> Help & Troubleshooting</h2>
+                <button class="btn-icon close" data-close="helpModal" aria-label="Close help">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <section class="help-section">
+                    <h3>Quick start</h3>
+                    <div class="help-grid">
+                        <div class="help-card">
+                            <h4>1. Upload</h4>
+                            <p>Drop PDF/DOCX/TXT/CSV files in Upload. OCR for images in DOCX is supported when enabled.</p>
+                        </div>
+                        <div class="help-card">
+                            <h4>2. Search</h4>
+                            <p>Use natural language queries. Tune results count and threshold for recall/precision.</p>
+                        </div>
+                        <div class="help-card">
+                            <h4>3. Chat</h4>
+                            <p>Ask questions with ΓÇ£Include ContextΓÇ¥ to ground answers. Citations appear as chips.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="help-section">
+                    <h3>Health states</h3>
+                    <div class="badge-row">
+                        <span class="badge success"><i class="fas fa-circle"></i> Online</span>
+                        <span class="badge warning"><i class="fas fa-circle"></i> Degraded</span>
+                        <span class="badge danger"><i class="fas fa-circle"></i> Offline</span>
+                    </div>
+                    <ul class="help-list">
+                        <li><strong>Online</strong>: All services are healthy.</li>
+                        <li><strong>Degraded</strong>: External services (Pinecone/Embeddings) are slow or partially unavailable; retries may occur.</li>
+                        <li><strong>Offline</strong>: Backend unreachable or critical failure. Check your connection and server logs.</li>
+                    </ul>
+                </section>
+
+                <section class="help-section">
+                    <h3>Troubleshooting</h3>
+                    <div class="help-grid">
+                        <div class="help-card">
+                            <h4>Upload issues</h4>
+                            <ul class="help-list">
+                                <li>Max size ~10MB per file.</li>
+                                <li>Supported: PDF, DOCX, TXT, CSV.</li>
+                                <li>Scanned PDFs need external OCR (e.g., Google Vision) or pre-processing.</li>
+                            </ul>
+                        </div>
+                        <div class="help-card">
+                            <h4>Search quality</h4>
+                            <ul class="help-list">
+                                <li>Lower threshold for more recall; raise for more precision.</li>
+                                <li>Increase <em>Results</em> for broader context.</li>
+                            </ul>
+                        </div>
+                        <div class="help-card">
+                            <h4>Connectivity</h4>
+                            <ul class="help-list">
+                                <li>If offline, ensure internet is connected.</li>
+                                <li>API 503/429 indicates overload or rate limiting; try again shortly.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <p>Processing...</p>
+    </div>
+
+    
+    <script src="js/utils.js"></script>
+    <script src="js/nlp.js"></script>
+    <script src="js/db.js"></script>
+    <script src="js/upload.js"></script>
+    <script src="js/chat.js"></script>
+    <script src="js/main.js"></script>
+</body>
+
+</html>

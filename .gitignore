@@ -1,0 +1,14 @@
+node_modules/
+env/
+
+# Environment files (do not commit secrets)
+.env
+python_backend/.env
+
+# Python artifacts
+__pycache__/
+*.pyc
+.venv/
+
+# Local state
+python_backend/data/docs.json
