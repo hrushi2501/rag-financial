@@ -549,10 +549,37 @@ class RAGService:
         if document_id not in self._docs:
             return False
         try:
-            total_chunks = int(self._docs[document_id].get("total_chunks", 0))
-            if self.index and total_chunks > 0:
-                ids = [f"{document_id}-{i}" for i in range(total_chunks)]
-                self.index.delete(ids=ids)
+            if self.index:
+                deleted_via_filter = False
+                # Preferred: delete via metadata filter to avoid relying on stored chunk count
+                try:
+                    self.index.delete(filter={"document_id": {"$eq": document_id}})
+                    deleted_via_filter = True
+                except Exception as e1:
+                    # Some serverless tiers/SDKs accept a simplified equality form
+                    try:
+                        self.index.delete(filter={"document_id": document_id})
+                        deleted_via_filter = True
+                    except Exception as e2:
+                        # Fallback: delete by explicit ids if we know total_chunks
+                        try:
+                            total_chunks = int(self._docs[document_id].get("total_chunks", 0))
+                            if total_chunks > 0:
+                                ids = [f"{document_id}-{i}" for i in range(total_chunks)]
+                                self.index.delete(ids=ids)
+                        except Exception as e3:
+                            print(f"Warning: Pinecone delete fallback by ids failed: {e3}")
+                # Optional verification and second-pass safety
+                try:
+                    remaining = self._pinecone_count(document_id)
+                    if remaining and remaining > 0 and not deleted_via_filter:
+                        # Try one more time with filter if first filter delete path was skipped
+                        try:
+                            self.index.delete(filter={"document_id": {"$eq": document_id}})
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
         except Exception as e:
             print(f"Warning: Failed to delete vectors from Pinecone: {e}")
         self._docs.pop(document_id, None)
