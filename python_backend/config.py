@@ -7,9 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ============================================================================
 # DIRECTORY PATHS
-# ============================================================================
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(ROOT_DIR, "data")
 INDEX_FILE = os.path.join(DATA_DIR, "docs.json")
@@ -17,15 +15,11 @@ INDEX_FILE = os.path.join(DATA_DIR, "docs.json")
 # Ensure data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# ============================================================================
 # EMBEDDING MODEL CONFIGURATION
-# ============================================================================
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "ProsusAI/finbert")
 EMBEDDING_DIMENSION = 768  # FinBERT outputs 768-dimensional vectors
 
-# ============================================================================
 # VECTOR DATABASE CONFIGURATION (Pinecone)
-# ============================================================================
 VECTOR_DB_PROVIDER = "pinecone"
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "financial-rag")
@@ -33,9 +27,7 @@ PINECONE_CLOUD = "aws"
 PINECONE_REGION = os.getenv("PINECONE_ENVIRONMENT", "us-east-1")
 PINECONE_METRIC = "cosine"
 
-# ============================================================================
 # LLM CONFIGURATION (Google Gemini)
-# ============================================================================
 LLM_PROVIDER = "gemini"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 LLM_MODEL_PRIORITY = [
@@ -45,36 +37,26 @@ LLM_MODEL_PRIORITY = [
     "gemini-pro"
 ]
 
-# ============================================================================
 # TEXT PROCESSING CONFIGURATION
-# ============================================================================
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 500))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 50))
 MIN_PDF_TEXT_LENGTH = 50
 
-# ============================================================================
 # SEARCH CONFIGURATION
-# ============================================================================
 DEFAULT_TOP_K = 5
 MAX_CONTEXT_LENGTH = 6000
 
-# ============================================================================
 # FILE UPLOAD CONFIGURATION
-# ============================================================================
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".csv", ".txt"}
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", 10485760))  # 10MB default
 MAX_FILES_PER_REQUEST = 10
 
-# ============================================================================
 # API CONFIGURATION
-# ============================================================================
 MAX_QUERY_LENGTH = 1000
 PORT = int(os.getenv("PORT", 5000))
 DEBUG_MODE = os.getenv("FLASK_DEBUG", "0") in ("1", "true", "True")
 
-# ============================================================================
 # VALIDATION HELPERS
-# ============================================================================
 def validate_config():
     """
     Validate critical configuration settings and return warnings.

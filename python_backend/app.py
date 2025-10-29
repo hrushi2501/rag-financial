@@ -9,9 +9,7 @@ from config import (
 )
 from service import RAGService, DATA_DIR
 
-# ============================================================================
 # Flask API for Financial RAG Chatbot
-# ============================================================================
 # Modular backend serving:
 # Endpoints:
 #  - GET  /api/health
@@ -28,25 +26,19 @@ app = Flask(
 )
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-# ============================================================================
 # SERVICE INITIALIZATION
-# ============================================================================
 ALLOWED_EXTENSIONS = SUPPORTED_EXTENSIONS  # Import from config
 rag = RAGService()
 
 
-# ============================================================================
 # UTILITY FUNCTIONS
-# ============================================================================
 
 def allowed_file(filename: str) -> bool:
     """Check if file has an allowed extension"""
     return any(filename.lower().endswith(ext) for ext in ALLOWED_EXTENSIONS)
 
 
-# ============================================================================
 # API ENDPOINTS
-# ============================================================================
 
 @app.get("/api/health")
 def health():
@@ -166,6 +158,23 @@ def delete_doc(document_id: str):
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": f"Delete failed: {str(e)}"}), 500
+
+
+@app.post("/api/admin/flush-pinecone")
+def flush_pinecone():
+    """ADMIN ONLY: Flush all vectors from Pinecone index"""
+    try:
+        if not rag.index:
+            return jsonify({"success": False, "error": "Pinecone not configured"}), 500
+        
+        print("⚠ ADMIN: Flushing all vectors from Pinecone...")
+        rag.index.delete(deleteAll=True)
+        print("✓ All vectors deleted from Pinecone")
+        
+        return jsonify({"success": True, "message": "All vectors deleted from Pinecone"})
+    except Exception as e:
+        print(f"✗ Flush failed: {e}")
+        return jsonify({"success": False, "error": f"Flush failed: {str(e)}"}), 500
 
 
 # Optional: serve frontend if you open http://localhost:5000/

@@ -32,10 +32,7 @@ from pinecone import Pinecone, ServerlessSpec
 import pypdf
 from io import BytesIO
 
-# ============================================================================
 # DATA MODELS
-# ============================================================================
-
 
 @dataclass
 class SearchResult:
@@ -44,9 +41,7 @@ class SearchResult:
     score: float
 
 
-# ============================================================================
 # RAG SERVICE CLASS
-# ============================================================================
 
 class RAGService:
     """
