@@ -1,0 +1,88 @@
+name: financial-rag
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5000}
+        NEXT_PUBLIC_ASYNC_INGESTION: ${NEXT_PUBLIC_ASYNC_INGESTION:-true}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5000}
+      NEXT_PUBLIC_ASYNC_INGESTION: ${NEXT_PUBLIC_ASYNC_INGESTION:-true}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: "5000"
+      FLASK_DEBUG: "0"
+      HF_HOME: /var/cache/huggingface
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      AUTH_MODE: ${AUTH_MODE:-disabled}
+      ASYNC_INGESTION_ENABLED: ${ASYNC_INGESTION_ENABLED:-true}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    ports:
+      - "${PORT:-5000}:5000"
+    volumes:
+      - rag-data:/app/python_backend/data
+      - huggingface-cache:/var/cache/huggingface
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A python_backend.tasks:celery_app worker --loglevel=INFO --concurrency=1
+    working_dir: /app
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      HF_HOME: /var/cache/huggingface
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      ASYNC_INGESTION_ENABLED: "true"
+    volumes:
+      - rag-data:/app/python_backend/data
+      - huggingface-cache:/var/cache/huggingface
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 60s
+
+  redis:
+    image: redis:7.4-alpine
+    command: redis-server --appendonly yes --maxmemory-policy noeviction
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  rag-data:
+  huggingface-cache:
+  redis-data:
