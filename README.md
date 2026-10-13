@@ -166,3 +166,7 @@ python_backend/tests/      Unit and API tests
 frontend/                  Legacy static UI, retained temporarily
 docs/                      Architecture, roadmap, benchmark contract
 ```
+
+## Author
+
+[Hrushi Bhanvadiya](https://hrushi-bhanvadiya.vercel.app) (ઋષિ ભાણવડીયા), also known as Rushi and Hrushi2501. See the portfolio for project context and contact links.
